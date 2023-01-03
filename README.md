@@ -71,7 +71,7 @@ You still can implement TableVideDelegate / CollectionViewDelegate functions in 
 collection.delegate.add(self)
 ```
 
-## GridLayout and TableLayot
+## GridLayout and TableLayout
 
 A bridge to SwiftUI for the Collection and Table
 
