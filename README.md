@@ -5,7 +5,7 @@ Several classes and extensions simplifying implementation of UI in iOS and macOS
 
 ## Collection and Table
 
-CollectionView and TableView model driving wrappers. The wrappers support empty state view and animated reload, both have similar interface, and crossplatofrm supprt between iOS and macOS.
+CollectionView and TableView model driving wrappers. The wrappers support empty state view and animated reload, both have similar interface, and crossplatofrm support between iOS and macOS.
 
 Let's make model and collection cell:
 
@@ -53,7 +53,7 @@ let arrayOfModels: [Model]
 collection.set(arrayOfModels, animated: true)
 ```
 
-You can mix model types in the array. Also you can put there an ordinary View. In this case you don't need to supply a description, the wrapper will use autolayout to calculate the size of the cell containing the View.
+You can mix model types in the array. Also you can put an ordinary View there. In this case you don't need to supply a description, the wrapper will use autolayout to calculate the size of the cell containing the View.
 
 ```swift
 var mixedArray: [AnyHashable] = []
