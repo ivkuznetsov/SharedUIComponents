@@ -101,7 +101,7 @@ public class Paging: ObservableObject {
     public func refresh(showFail: Bool = false) {
         performOnRefresh?()
         
-        paramenters.loader.run(content.items.isEmpty ? .opaque : (showFail ? .alertOnFail : .none), id: "feed") { [weak self] in
+        paramenters.loader.run(content.items.isEmpty ? .opaque : (showFail ? .alertOnFail : .none), id: "feed") { [weak self] _ in
             self?.state.value = .loading
             
             do {
@@ -120,7 +120,7 @@ public class Paging: ObservableObject {
     fileprivate func loadMoreIfAllowed() {
         guard state.value != .loading, let next = content.next, shouldLoadMore() else { return }
         
-        paramenters.loader.run(.none, id: "feed") { [weak self] in
+        paramenters.loader.run(.none, id: "feed") { [weak self] _ in
             self?.state.value = .loading
             
             do {
