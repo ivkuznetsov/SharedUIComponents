@@ -5,6 +5,8 @@
 //  Created by Ilya Kuznetsov on 07/01/2023.
 //
 
+
+#if os(iOS)
 import SwiftUI
 import Combine
 
@@ -49,3 +51,4 @@ public struct PagingLayout<List: BaseList<R>, R>: UIViewControllerRepresentable 
     
     public func updateUIViewController(_ uiViewController: UIViewControllerType, context: Context) { }
 }
+#endif

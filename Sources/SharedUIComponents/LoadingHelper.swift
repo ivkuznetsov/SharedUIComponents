@@ -53,7 +53,7 @@ public class LoadingHelper: ObservableObject {
         public let presentation: Presentation
         
         private let id: String
-        fileprivate var cancel: (()->())!
+        public var cancel: (()->())!
         
         init(id: String, presentation: Presentation) {
             self.id = id

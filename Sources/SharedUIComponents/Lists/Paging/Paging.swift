@@ -207,7 +207,12 @@ public class ListTracker<List: BaseList<R>, R>: NSObject {
     private func itemsWithFooter(_ content: Paging.Content?) -> [AnyHashable] {
         let items = content?.items ?? []
         
-        if (list.view.scrollView.refreshControl == nil && content == nil) || content?.next != nil {
+        var noRefreshControl = true
+        #if os(iOS)
+        noRefreshControl = list.view.scrollView.refreshControl == nil
+        #endif
+        
+        if (noRefreshControl && content == nil) || content?.next != nil {
             return items.appending(footer)
         } else {
             return items

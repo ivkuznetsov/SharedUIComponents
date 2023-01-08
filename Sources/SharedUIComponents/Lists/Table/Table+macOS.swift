@@ -15,7 +15,7 @@ extension Table: NSTableViewDataSource, NSTableViewDelegate {
                                                            action: ((R)->())? = nil,
                                                            doubleClick: ((R)->())? = nil,
                                                            menuItems: @escaping (AnyHashable)->[NSMenuItem] = { _ in [] }) {
-        set(cell: .init(info: .init(itemType: itemType,
+        add(cell: .init(info: .init(itemType: itemType,
                                     type: type,
                                     fill: { fill($0 as! R, $1 as! T) },
                                     source: source,
