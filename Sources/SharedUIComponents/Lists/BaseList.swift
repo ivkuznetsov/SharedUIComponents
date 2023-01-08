@@ -27,7 +27,8 @@ struct CellInfo<CellView, Size> {
 }
 
 public protocol ListCell {
-    var itemType: any Hashable.Type { get }
+
+    var supports: (AnyHashable)->Bool { get }
 }
 
 public protocol ListView: PlatformView {
@@ -44,11 +45,15 @@ open class BaseList<View: ListView>: NSObject {
     
     public var showNoData: ([AnyHashable]) -> Bool = { $0.isEmpty }
     
-    func set(cell: View.Cell) {
-        cells[String(describing: cell.itemType)] = cell
+    var cells: [View.Cell] = []
+    
+    func add(cell: View.Cell) {
+        cells.append(cell)
     }
     
-    func cell(_ item: AnyHashable) -> View.Cell? { cells[String(describing: type(of: item.base))] }
+    func cell(_ item: AnyHashable) -> View.Cell? {
+        cells.first { $0.supports(item) }
+    }
     
     public private(set) var items: [AnyHashable] = []
     
@@ -74,7 +79,6 @@ open class BaseList<View: ListView>: NSObject {
     
     private var deferredReload = false
     private var updatingData = false
-    var cells: [String:View.Cell] = [:]
     
     private var deferredItems: [AnyHashable]?
     private var updateCompletion: (()->())?

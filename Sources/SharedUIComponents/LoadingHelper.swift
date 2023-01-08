@@ -2,9 +2,11 @@
 //  LoadingHelper.swift
 //
 
+import Foundation
 import Combine
 import CommonUtils
 
+@MainActor
 public class LoadingHelper: ObservableObject {
 
     public init() { }
@@ -39,51 +41,61 @@ public class LoadingHelper: ObservableObject {
     private let failPublisher = PassthroughSubject<Fail, Never>()
     public var didFail: AnyPublisher<Fail, Never> { failPublisher.eraseToAnyPublisher() }
     
-    private var keyedWorks: [String:WorkBase] = [:]
-    @Published public private(set) var processing: [WorkBase:(progress: WorkProgress?, presentation: Presentation)] = [:]
+    @Published public private(set) var processing: [String:TaskWrapper] = [:]
     
     public enum Options: Hashable {
         case showsProgress
     }
     
-    @discardableResult
-    public func run<T>(_ presentation: Presentation, reuseKey: String? = nil, options: Set<Options> = Set(), _ makeWork: @escaping ()->Work<T>?) -> Work<T> {
+    public class TaskWrapper: Hashable {
+        let id: String
+        public let presentation: Presentation
+        let cancel: ()->()
         
-        guard let work = makeWork() else {
-            return .fail(RunError.cancelled)
+        init(id: String, presentation: Presentation, cancel: @escaping () -> Void) {
+            self.id = id
+            self.presentation = presentation
+            self.cancel = cancel
         }
         
-        processing[work] = (options.contains(.showsProgress) ? work.progress : nil, presentation)
-        
-        if let key = reuseKey {
-            keyedWorks[key]?.cancel()
-            keyedWorks[key] = work
+        public func hash(into hasher: inout Hasher) {
+            hasher.combine(id)
         }
         
-        work.runWith { [weak self, weak work] error in
-            guard let wSelf = self, let work = work else { return }
-            
-            if let key = reuseKey, wSelf.keyedWorks[key] == work {
-                wSelf.keyedWorks[key] = nil
+        public static func == (lhs: LoadingHelper.TaskWrapper, rhs: LoadingHelper.TaskWrapper) -> Bool { lhs.hashValue == rhs.hashValue }
+        
+        deinit { cancel() }
+    }
+    
+    public func run(_ presentation: Presentation, id: String? = nil, _ action: @escaping () async throws -> ()) {
+        let id = id ?? UUID().uuidString
+        
+        let task = Task { [weak self] in
+            do {
+                try await action()
+            } catch {
+                if !error.isCancelled {
+                    self?.failPublisher.send(Fail(error: error,
+                                                  retry: { _ = self?.run(presentation, id: id, action) },
+                                                  presentation: presentation))
+                }
             }
-            if let error = error {
-                wSelf.failPublisher.send(Fail(error: error,
-                                              retry: { _ = self?.run(presentation,
-                                                                     reuseKey: reuseKey,
-                                                                     options: options,
-                                                                     makeWork) },
-                                              presentation: presentation))
-            }
-            wSelf.processing[work] = nil
+            self?.processing[id] = nil
         }
-        return work
+        
+        let wrapper = TaskWrapper(id: id, presentation: presentation) {
+            task.cancel()
+        }
+        
+        processing[id]?.cancel()
+        processing[id] = wrapper
+        
+        if task.isCancelled {
+            processing[id] = nil
+        }
     }
     
     public func cancelOperations() {
-        processing.forEach { $0.key.cancel() }
-    }
-    
-    deinit {
-        cancelOperations()
+        processing.forEach { $0.value.cancel() }
     }
 }

@@ -10,6 +10,27 @@ import UIKit
 
 extension Table: UITableViewDataSource {
     
+    public func addCell<T: PlatformTableCell, R: Hashable>(for itemType: R.Type,
+                                                           type: T.Type,
+                                                           fill: @escaping (R, T)->(),
+                                                           source: CellSource = .nib,
+                                                           estimatedHeight: @escaping (R)->CGFloat = { _ in 150 },
+                                                           height: @escaping (R)->CGFloat = { _ in -1 },
+                                                           action: ((R)->())? = nil,
+                                                           editor: ((R)->TableCell.Editor)? = nil,
+                                                           prefetch: ((R)->Table.Cancel)? = nil) {
+        add(cell: .init(info: .init(itemType: itemType,
+                                    type: type,
+                                    fill: { fill($0 as! R, $1 as! T) },
+                                    source: source,
+                                    size: { height($0 as! R) },
+                                    action: { action?($0 as! R) }),
+                        prefetch: prefetch == nil ? nil : { prefetch!($0 as! R) },
+                        estimatedHeight: { estimatedHeight($0 as! R) },
+                        editor: editor == nil ? nil : { editor!($0 as! R) },
+                        supports: { $0 is R }))
+    }
+    
     public func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { items.count }
     
     public func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {

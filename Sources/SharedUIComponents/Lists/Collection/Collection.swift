@@ -11,9 +11,18 @@ import UIKit
 import AppKit
 #endif
 
-public typealias PagingCollection = PagingLoader<Collection, CollectionView>
-
-open class CollectionView: PlatformCollectionView {
+open class CollectionView: PlatformCollectionView, ListView {
+    public typealias Cell = CollectionCell
+    public typealias CellSize = CGSize
+    public typealias ContainerCell = ContainerCollectionItem
+    
+    public var scrollView: PlatformScrollView {
+        #if os(iOS)
+        self
+        #else
+        enclosingScrollView!
+        #endif
+    }
     
     #if os(iOS)
     public override init(frame: CGRect, collectionViewLayout layout: UICollectionViewLayout) {
@@ -48,27 +57,14 @@ open class CollectionView: PlatformCollectionView {
 }
 
 public struct CollectionCell: ListCell {
+    
     let info: CellInfo<PlatformCollectionCell, CGSize>
     
     #if os(macOS)
     public let doubleClick: (AnyHashable)->()
     #endif
     
-    public var itemType: any Hashable.Type { info.itemType }
-}
-
-extension CollectionView: ListView {
-    public typealias Cell = CollectionCell
-    public typealias CellSize = CGSize
-    public typealias ContainerCell = ContainerCollectionItem
-    
-    public var scrollView: PlatformScrollView {
-        #if os(iOS)
-        self
-        #else
-        enclosingScrollView!
-        #endif
-    }
+    public let supports: (AnyHashable)->Bool
 }
 
 open class Collection: BaseList<CollectionView> {
@@ -87,37 +83,6 @@ open class Collection: BaseList<CollectionView> {
             let item = items[indexPath.item]
             cell(item)?.doubleClick(item)
         }
-    }
-    
-    public func setCell<T: PlatformCollectionCell, R: Hashable>(for itemType: R.Type,
-                                                                type: T.Type,
-                                                                fill: @escaping (R, T)->(),
-                                                                source: CellSource = .nib,
-                                                                size: @escaping (R)->CGSize = { _ in .zero },
-                                                                action: ((R)->())? = nil,
-                                                                doubleClick: ((R)->())? = nil) {
-        set(cell: .init(info: .init(itemType: itemType,
-                                    type: type,
-                                    fill: { fill($0 as! R, $1 as! T) },
-                                    source: source,
-                                    size: { size($0 as! R) },
-                                    action: { action?($0 as! R) }),
-                        doubleClick: { doubleClick?($0 as! R) }))
-    }
-    
-    #else
-    public func setCell<T: PlatformCollectionCell, R: Hashable>(for itemType: R.Type,
-                                                                type: T.Type,
-                                                                fill: @escaping (R, T)->(),
-                                                                source: CellSource = .nib,
-                                                                size: @escaping (R)->CGSize = { _ in .zero },
-                                                                action: ((R)->())? = nil) {
-        set(cell: .init(info: .init(itemType: itemType,
-                                    type: type,
-                                    fill: { fill($0 as! R, $1 as! T) },
-                                    source: source,
-                                    size: { size($0 as! R) },
-                                    action: { action?($0 as! R) })))
     }
     #endif
     

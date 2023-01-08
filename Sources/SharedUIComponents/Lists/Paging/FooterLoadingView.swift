@@ -10,28 +10,15 @@ import AppKit
 
 open class FooterLoadingView: PlatformView {
 
-    public enum State {
-        case stop
-        case loading
-        case failed
-    }
-    
-    #if os(iOS)
-    let indicatorView: UIActivityIndicatorView
-    #else
-    let indicatorView: NSProgressIndicator
-    #endif
-    let retryButton: PlatformButton!
-    
-    public init() {
+    public init(state: LoadingState) {
         #if os(iOS)
-        indicatorView = UIActivityIndicatorView(style: .medium)
-        retryButton = UIButton(type: .system)
+        let indicatorView = UIActivityIndicatorView(style: .medium)
+        let retryButton = UIButton(type: .system)
         retryButton.setTitle("Retry", for: .normal)
         #else
-        indicatorView = NSProgressIndicator()
+        let indicatorView = NSProgressIndicator()
         indicatorView.style = .spinning
-        retryButton = NSButton()
+        let retryButton = NSButton()
         retryButton.bezelStyle = .texturedRounded
         retryButton.title = "Retry"
         #endif
@@ -49,32 +36,33 @@ open class FooterLoadingView: PlatformView {
         let constraint = heightAnchor.constraint(equalToConstant: 50)
         constraint.priority = .init(900)
         constraint.isActive = true
+        
+        state.$value.sink { state in
+            if case .failed(_) = state {
+                retryButton.isHidden = false
+            } else {
+                retryButton.isHidden = true
+            }
+            #if os(iOS)
+            if state == .loading {
+                indicatorView.startAnimating()
+            } else {
+                indicatorView.stopAnimating()
+            }
+            #else
+            if state == .loading {
+                indicatorView.startAnimation(nil)
+            } else {
+                indicatorView.stopAnimation(nil)
+            }
+            #endif
+        }.retained(by: self)
     }
     
     required public init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
     
-    open var state: State = .stop {
-        didSet {
-            if state != oldValue {
-                retryButton.isHidden = state != .failed
-                #if os(iOS)
-                if state == .loading {
-                    indicatorView.startAnimating()
-                } else {
-                    indicatorView.stopAnimating()
-                }
-                #else
-                if state == .loading {
-                    indicatorView.startAnimation(nil)
-                } else {
-                    indicatorView.stopAnimation(nil)
-                }
-                #endif
-            }
-        }
-    }
     var retry: (()->())?
     
     @objc private func retryAction() {

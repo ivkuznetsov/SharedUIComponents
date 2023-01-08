@@ -20,8 +20,6 @@ public class NoEmptyCellsTableView: NSTableView {
 }
 #endif
 
-public typealias PagingTable = PagingLoader<Table, PlatformTableView>
-
 public struct TableCell: ListCell {
     
     let info: CellInfo<PlatformTableCell, CGFloat>
@@ -50,7 +48,7 @@ public struct TableCell: ListCell {
     let menuItems: (AnyHashable)->[NSMenuItem]
     #endif
     
-    public var itemType: any Hashable.Type { info.itemType }
+    public let supports: (AnyHashable)->Bool
 }
 
 extension PlatformTableView: ListView {
@@ -107,49 +105,12 @@ public class Table: BaseList<PlatformTableView> {
         }
     }
     
-    public func setCell<T: PlatformTableCell, R: Hashable>(for itemType: R.Type,
-                                                           type: T.Type,
-                                                           fill: @escaping (R, T)->(),
-                                                           source: CellSource = .nib,
-                                                           estimatedHeight: @escaping (R)->CGFloat = { _ in 150 },
-                                                           height: @escaping (R)->CGFloat = { _ in -1 },
-                                                           action: ((R)->())? = nil,
-                                                           editor: ((R)->TableCell.Editor)? = nil,
-                                                           prefetch: ((R)->Table.Cancel)? = nil) {
-        set(cell: .init(info: .init(itemType: itemType,
-                                    type: type,
-                                    fill: { fill($0 as! R, $1 as! T) },
-                                    source: source,
-                                    size: { height($0 as! R) },
-                                    action: { action?($0 as! R) }),
-                        prefetch: prefetch == nil ? nil : { prefetch!($0 as! R) },
-                        estimatedHeight: { estimatedHeight($0 as! R) },
-                        editor: editor == nil ? nil : { editor!($0 as! R) }))
-    }
-    
     public func scrollTo(item: AnyHashable, animated: Bool) {
         if let index = items.firstIndex(of: item) {
             view.scrollToRow(at: IndexPath(row: index, section:0), at: .none, animated: animated)
         }
     }
     #else
-    public func setCell<T: PlatformTableCell, R: Hashable>(for itemType: R.Type,
-                                                           type: T.Type,
-                                                           fill: @escaping (R, T)->(),
-                                                           source: CellSource = .nib,
-                                                           height: @escaping (R)->CGFloat = { _ in -1 },
-                                                           action: ((R)->())? = nil,
-                                                           doubleClick: ((R)->())? = nil,
-                                                           menuItems: @escaping (AnyHashable)->[NSMenuItem] = { _ in [] }) {
-        set(cell: .init(info: .init(itemType: itemType,
-                                    type: type,
-                                    fill: { fill($0 as! R, $1 as! T) },
-                                    source: source,
-                                    size: { height($0 as! R) },
-                                    action: { action?($0 as! R) }),
-                        doubleClick: { doubleClick?($0 as! R) },
-                        menuItems: { menuItems($0 as! R) }))
-    }
     
     public var didScroll: (()->())?
     
@@ -258,7 +219,7 @@ public class Table: BaseList<PlatformTableView> {
         #if os(macOS)
         let preserver = FirstResponderPreserver(window: view.window)
         #else
-        view.prefetchDataSource = cells.values.contains(where: { $0.prefetch != nil }) ? self : nil
+        view.prefetchDataSource = cells.contains(where: { $0.prefetch != nil }) ? self : nil
         #endif
         
         view.reload(oldData: self.items,

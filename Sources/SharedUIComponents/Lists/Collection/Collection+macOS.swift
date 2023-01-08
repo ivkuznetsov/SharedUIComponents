@@ -10,6 +10,23 @@ import AppKit
 
 extension Collection: NSCollectionViewDataSource {
     
+    public func addCell<T: PlatformCollectionCell, R: Hashable>(for itemType: R.Type,
+                                                                type: T.Type,
+                                                                fill: @escaping (R, T)->(),
+                                                                source: CellSource = .nib,
+                                                                size: @escaping (R)->CGSize = { _ in .zero },
+                                                                action: ((R)->())? = nil,
+                                                                doubleClick: ((R)->())? = nil) {
+        add(cell: .init(info: .init(itemType: itemType,
+                                    type: type,
+                                    fill: { fill($0 as! R, $1 as! T) },
+                                    source: source,
+                                    size: { size($0 as! R) },
+                                    action: { action?($0 as! R) }),
+                        doubleClick: { doubleClick?($0 as! R) },
+                        supports: { $0 is R }))
+    }
+    
     public func numberOfSections(in collectionView: NSCollectionView) -> Int { 1 }
     
     public func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { items.count }

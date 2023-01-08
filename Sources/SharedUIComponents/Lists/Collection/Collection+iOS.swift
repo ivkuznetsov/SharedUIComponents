@@ -10,6 +10,21 @@ import UIKit
 
 extension Collection: UICollectionViewDataSource {
     
+    public func addCell<T: PlatformCollectionCell, R: Hashable>(for itemType: R.Type,
+                                                                type: T.Type,
+                                                                fill: @escaping (R, T)->(),
+                                                                source: CellSource = .nib,
+                                                                size: @escaping (R)->CGSize = { _ in .zero },
+                                                                action: ((R)->())? = nil) {
+        add(cell: .init(info: .init(itemType: itemType,
+                                    type: type,
+                                    fill: { fill($0 as! R, $1 as! T) },
+                                    source: source,
+                                    size: { size($0 as! R) },
+                                    action: { action?($0 as! R) }),
+                        supports: { $0 is R }))
+    }
+    
     public func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int { items.count }
     
     public func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
