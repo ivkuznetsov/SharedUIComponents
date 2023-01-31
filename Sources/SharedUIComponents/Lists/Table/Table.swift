@@ -7,22 +7,21 @@
 
 #if os(iOS)
 import UIKit
+import SwiftUI
 #else
 import AppKit
+#endif
 
-public class NoEmptyCellsTableView: NSTableView {
-    override public func drawGrid(inClipRect clipRect: NSRect) { }
+extension PlatformTableCell: WithConfiguration { }
+
+#if os(macOS)
+public class TableView: PlatformTableView {
     
-    open override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        (delegate as? Table)?.visible = window != nil
-    }
+    override public func drawGrid(inClipRect clipRect: NSRect) { }
 }
 #endif
 
-public struct TableCell: ListCell {
-    
-    let info: CellInfo<PlatformTableCell, CGFloat>
+public struct TableCell {
     
     #if os(iOS)
     public enum Editor {
@@ -39,23 +38,33 @@ public struct TableCell: ListCell {
         }
     }
     
-    let prefetch: ((AnyHashable)->Table.Cancel?)?
-    let estimatedHeight: (AnyHashable)->CGFloat
-    let editor: ((AnyHashable)->Editor)?
+    let editor: (AnyHashable)->Editor?
     
     #else
-    let doubleClick: (AnyHashable)->()
     let menuItems: (AnyHashable)->[NSMenuItem]
     #endif
+}
+
+extension PlatformTableDataSource: DataSource {
     
-    public let supports: (AnyHashable)->Bool
+    public func apply(_ snapshot: DataSourceSnapshot, animated: Bool) async {
+        if #available(iOS 15, *) {
+            await apply(snapshot, animatingDifferences: animated)
+        } else {
+            await withCheckedContinuation { continuation in
+                apply(snapshot, animatingDifferences: animated) {
+                    continuation.resume()
+                }
+            }
+        }
+    }
 }
 
 extension PlatformTableView: ListView {
-    public typealias Cell = TableCell
-    public typealias Delegate = PlatformTableDelegate
-    public typealias CellSize = CGFloat
-    public typealias ContainerCell = ContainerTableCell
+    public typealias CellAdditions = TableCell
+    public typealias Cell = BaseTableViewCell
+    public typealias Content = PlatformTableDataSource
+    public typealias Container = ContainerTableCell
     
     public var scrollView: PlatformScrollView {
         #if os(iOS)
@@ -66,61 +75,69 @@ extension PlatformTableView: ListView {
     }
 }
 
-public class Table: BaseList<PlatformTableView> {
-    
-    public var useAutomaticHeights = true {
-        didSet {
-            #if os(iOS)
-            view.estimatedRowHeight = useAutomaticHeights ? 150 : 0
-            #else
-            view.usesAutomaticRowHeights = useAutomaticHeights
-            #endif
-        }
-    }
-    
-    public var addAnimation: PlatformTableViewAnimation = {
-        #if os(iOS)
-        .fade
-        #else
-        .effectFade
-        #endif
-    }()
-    
-    public var deleteAnimation: PlatformTableViewAnimation = {
-        #if os(iOS)
-        .fade
-        #else
-        .effectFade
-        #endif
-    }()
+public extension Snapshot where View == PlatformTableView {
     
     #if os(iOS)
-    var prefetchTokens: [IndexPath:Cancel] = [:]
-    
-    public struct Cancel {
-        let cancel: ()->()
-        
-        public init(_ cancel: @escaping ()->()) {
-            self.cancel = cancel
-        }
+    mutating func addSection<Cell: PlatformTableCell, Item: Hashable>(_ items: [Item],
+                                                                      cell: Cell.Type,
+                                                                      source: ((Item)->CellSource)? = nil,
+                                                                      fill: @escaping (Item, Cell)->(),
+                                                                      action: ((Item)->())? = nil,
+                                                                      longPress: ((Item)->())? = nil,
+                                                                      editor: ((Item)->TableCell.Editor?)? = nil,
+                                                                      prefetch: ((Item)->PrefetchCancel)? = nil) {
+        addSection(items, section: .init(Item.self,
+                                         cell: cell,
+                                         source: source,
+                                         fill: fill,
+                                         action: action,
+                                         secondaryAction: longPress,
+                                         prefetch: prefetch,
+                                         additions: .init(editor: { editor?($0 as! Item) })))
     }
-    
-    public func scrollTo(item: AnyHashable, animated: Bool) {
-        if let index = items.firstIndex(of: item) {
-            view.scrollToRow(at: IndexPath(row: index, section:0), at: .none, animated: animated)
-        }
+
+    mutating func addSection<Item: Hashable, Content: SwiftUI.View>(_ items: [Item],
+                                             fill: @escaping (Item)-> Content,
+                                             longPress: ((Item)->())? = nil,
+                                             prefetch: ((Item)->PrefetchCancel)? = nil,
+                                             editor: ((Item)->TableCell.Editor?)? = nil) {
+        addSection(items, section: .init(Item.self,
+                                         cell: ContainerTableCell.self,
+                                         source: { _ in .code(reuseId: String(describing: Item.self)) },
+                                         fill: { item, cell in
+            cell.automaticallyUpdatesContentConfiguration = false
+            if #available(iOS 16, *) {
+                cell.contentConfiguration = UIHostingConfiguration { fill(item) }.margins(.all, 0)
+            } else {
+                cell.contentConfiguration = UIHostingConfigurationBackport { fill(item).ignoresSafeArea() }.margins(.all, 0)
+            }
+        }, secondaryAction: longPress, prefetch: prefetch, additions: .init(editor: { editor?($0 as! Item) })))
     }
+
     #else
-    
-    public var didScroll: (()->())?
-    
-    public var deselectedAll: (()->())?
-    
-    @objc private func doubleClickAction(_ sender: Any) {
-        if let item = items[safe: view.clickedRow] {
-            cell(item)?.doubleClick(item)
-        }
+    mutating func add<Cell: PlatformCollectionCell, Item: Hashable>(_ items: [Item],
+                                                                    cell: Cell.Type,
+                                                                    source: ((Item)->CellSource)? = nil,
+                                                                    fill: @escaping (Item, Cell)->(),
+                                                                    action: ((Item)->())? = nil,
+                                                                    doubleClick: ((Item)->())? = nil,
+                                                                    layout: SectionLayout? = nil) {
+        addSection(items, section: .init(Item.self,
+                                         cell: cell,
+                                         source: source,
+                                         fill: fill,
+                                         action: action,
+                                         secondaryAction: doubleClick,
+                                         additions: .init(layout: layout)))
     }
+    #endif
+}
+
+@MainActor
+public final class Table: ListContainer<PlatformTableView>, PlatformTableDelegate, PrefetchTableProtocol {
+    
+    #if os(macOS)
+    public var deselectedAll: (()->())?
     
     public var selectedItem: AnyHashable? {
         set {
@@ -132,36 +149,13 @@ public class Table: BaseList<PlatformTableView> {
                 view.deselectAll(nil)
             }
         }
-        get { items[safe: view.selectedRow] }
+        get { item(IndexPath(item: view.selectedRow, section: 0)) }
     }
     #endif
     
-    public required init(listView: PlatformTableView? = nil, emptyStateView: PlatformView) {
-        super.init(listView: listView, emptyStateView: emptyStateView)
-        delegate.add(self)
-        delegate.addConforming([PlatformTableDelegate.self, PlatformTableDataSource.self])
-        view.delegate = delegate as? PlatformTableDelegate
-        view.dataSource = delegate as? PlatformTableDataSource
-        
+    static func createDefaultView() -> PlatformTableView {
         #if os(iOS)
-        view.tableFooterView = UIView()
-        #else
-        view.menu = NSMenu()
-        view.menu?.delegate = self
-        view.wantsLayer = true
-        view.target = self
-        view.doubleAction = #selector(doubleClickAction(_:))
-        view.usesAutomaticRowHeights = true
-        
-        NotificationCenter.default.publisher(for: NSView.boundsDidChangeNotification, object: view.scrollView.contentView).sink { [weak self] _ in
-            self?.didScroll?()
-        }.retained(by: self)
-        #endif
-    }
-    
-    public override class func createDefaultView() -> PlatformTableView {
-        #if os(iOS)
-        let table = UITableView(frame: CGRect.zero, style: .plain)
+        let table = PlatformTableView(frame: CGRect.zero, style: .plain)
         table.backgroundColor = .clear
         table.rowHeight = UITableView.automaticDimension
         table.estimatedRowHeight = 150
@@ -173,7 +167,7 @@ public class Table: BaseList<PlatformTableView> {
         }
         #else
         let scrollView = NSScrollView()
-        let table = NoEmptyCellsTableView(frame: .zero)
+        let table = TableView(frame: .zero)
         
         scrollView.documentView = table
         scrollView.drawsBackground = true
@@ -188,58 +182,98 @@ public class Table: BaseList<PlatformTableView> {
         return table
     }
     
-    public override func reloadVisibleCells(excepting: Set<Int> = Set()) {
-        func update(cell: PlatformTableCell, index: Int) {
-            let item = items[index]
-            
-            if item as? PlatformView == nil {
-                self.cell(item)?.info.fill(item, cell)
+    public required init(listView: PlatformTableView? = nil) {
+        super.init(listView: listView ?? Self.createDefaultView())
+        
+        dataSource = PlatformTableDataSource(tableView: view) { [unowned self] tableView, indexPath, item in
+            guard let info = self.snapshot.info(indexPath)?.section else {
+                fatalError("Please specify cell for \(item)")
             }
+            let cell = view.createCell(for: info.cell, source: info.source(item))
+            info.fill(item, cell)
+            return cell
         }
+        delegate.add(self)
+        delegate.addConforming(PlatformTableDelegate.self)
+        view.delegate = delegate as? PlatformTableDelegate
         
         #if os(iOS)
-        view.visibleCells.forEach {
-            if let indexPath = view.indexPath(for: $0), !excepting.contains(indexPath.item) {
-                update(cell: $0, index: indexPath.row)
-                $0.separatorHidden = indexPath.row == items.count - 1 && view.tableFooterView != nil
-            }
-        }
+        view.tableFooterView = UIView()
         #else
-        let rows = view.rows(in: view.visibleRect)
-        for i in rows.location..<(rows.location + rows.length) {
-            if !excepting.contains(i), let view = view.rowView(atRow: i, makeIfNecessary: false) {
-                update(cell: view, index: i)
-            }
-        }
+        view.menu = NSMenu()
+        view.menu?.delegate = self
+        view.wantsLayer = true
+        view.target = self
+        view.doubleAction = #selector(doubleClickAction(_:))
+        view.usesAutomaticRowHeights = true
         #endif
     }
     
-    public override func update(_ items: [AnyHashable], animated: Bool, reloadCells: (Set<Int>) -> (), completion: @escaping () -> ()) {
-        
-        #if os(macOS)
-        let preserver = FirstResponderPreserver(window: view.window)
-        #else
-        view.prefetchDataSource = cells.contains(where: { $0.prefetch != nil }) ? self : nil
-        #endif
-        
-        view.reload(oldData: self.items,
-                    newData: items,
-                    updateObjects: reloadCells,
-                    addAnimation: addAnimation,
-                    deleteAnimation: deleteAnimation,
-                    animated: animated)
-        
-        #if os(macOS)
-        didScroll?()
-        preserver.commit()
-        #endif
-        
-        completion()
+    #if os(iOS)
+    public func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+        if let info = snapshot.info(indexPath) {
+            info.section.action(info.item)
+        }
     }
     
-    deinit {
-        #if os(iOS)
-        prefetchTokens.values.forEach { $0.cancel() }
-        #endif
+    public func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
+        
+        if let info = snapshot.info(indexPath), let editor = info.section.additions?.editor(info.item) {
+            switch editor {
+            case .delete(let action): action()
+            case .insert(let action): action()
+            default: break
+            }
+        }
     }
+    
+    public func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        if let info = snapshot.info(indexPath), let editor = info.section.additions?.editor(info.item),
+           case .actions(let actions) = editor {
+            let configuration = UISwipeActionsConfiguration(actions: actions())
+            configuration.performsFirstActionWithFullSwipe = false
+            return configuration
+        }
+        return nil
+    }
+    
+    public func tableView(_ tableView: UITableView, editingStyleForRowAt indexPath: IndexPath) -> UITableViewCell.EditingStyle {
+        if let info = snapshot.info(indexPath), let editor = info.section.additions?.editor(info.item) {
+            return editor.style
+        }
+        return .none
+    }
+    
+    public func tableView(_ tableView: UITableView, prefetchRowsAt indexPaths: [IndexPath]) {
+        prefetch(indexPaths)
+    }
+    
+    public func tableView(_ tableView: UITableView, cancelPrefetchingForRowsAt indexPaths: [IndexPath]) {
+        cancelPrefetch(indexPaths)
+    }
+    #else
+    
+    public func tableViewSelectionDidChange(_ notification: Notification) {
+        let selected = view.selectedRowIndexes
+        
+        if selected.isEmpty {
+            deselectedAll?()
+        } else {
+            selected.forEach {
+                view.deselectRow($0)
+                if let item = container.item($0) {
+                    cells.info(item)?.action(item)
+                }
+            }
+        }
+    }
+    
+    public func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        if let item = item(.init(row: view.clickedRow, section: 0)) {
+            cells.info(item)?.menuItems(item).forEach { menu.addItem($0) }
+        }
+    }
+    #endif
 }

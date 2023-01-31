@@ -15,8 +15,8 @@ import Foundation
     private var receivers: [WeakHolder] = []
     private var excluding = Set<NSObject>()
     
-    func addConforming(_ protocols: [Protocol]) {
-        protocols.forEach { class_addProtocol(type(of: self), $0) }
+    func addConforming(_ prot: Protocol) {
+        class_addProtocol(type(of: self), prot)
     }
     
     public func add(_ receiver: NSObject) {

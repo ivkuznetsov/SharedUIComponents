@@ -7,7 +7,7 @@ let package = Package(
     name: "SharedUIComponents",
     platforms: [
         .macOS(.v10_15),
-        .iOS(.v13)
+        .iOS(.v14)
     ],
     products: [
         .library(name: "SharedUIComponents",

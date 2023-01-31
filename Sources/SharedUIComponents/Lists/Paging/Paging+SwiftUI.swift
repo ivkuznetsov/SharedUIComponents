@@ -10,45 +10,83 @@
 import SwiftUI
 import Combine
 
-public typealias PagingGridLayout = PagingLayout<Collection, CollectionView>
-public typealias PagingListLayout = PagingLayout<Table, PlatformTableView>
+public typealias PagingGrid = PagingLayout<Collection, CollectionView>
+public typealias PagingList = PagingLayout<Table, PlatformTableView>
 
-public class PagingListViewController<List: BaseList<R>, R>: PlatformViewController {
+public class PagingListViewController<List: ListContainer<ListView>, ListView>: ListViewController<List, ListView> {
     
-    fileprivate let tracker: ListTracker<List, R>
+    fileprivate var tracker: ListTracker<List, ListView>!
     
-    init(paging: Paging) {
-        tracker = ListTracker(list: List(emptyStateView: PlatformView()), paging: paging)
+    init(refreshControl: Bool) {
         super.init(nibName: nil, bundle: nil)
+        tracker = ListTracker(list: list, hasRefreshControl: refreshControl)
     }
     
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
+}
+
+public extension Paging {
     
-    override public func viewDidLoad() {
-        super.viewDidLoad()
-        tracker.list.attachTo(view)
+    func gridLayout(refreshControl: Bool = true,
+                    data: @escaping (inout Snapshot<CollectionView>, [Item])->(),
+                    setup: ((ListTracker<Collection, CollectionView>)->())? = nil) -> some View {
+        PagingGrid(self, refreshControl: refreshControl, data: { data(&$0, $1 as! [Item]) }, setup: setup)
+    }
+    
+    func listLayout(refreshControl: Bool = true,
+                    data: @escaping (inout Snapshot<PlatformTableView>, [Item])->(),
+                    setup: ((ListTracker<Table, PlatformTableView>)->())? = nil) -> some View {
+        PagingList(self, refreshControl: refreshControl, data: { data(&$0, $1 as! [Item]) }, setup: setup)
     }
 }
 
-public struct PagingLayout<List: BaseList<R>, R>: UIViewControllerRepresentable {
-    public typealias UIViewControllerType = PagingListViewController<List, R>
+@MainActor
+public struct PagingLayout<List: ListContainer<ListView>, ListView>: UIViewControllerRepresentable {
+    public typealias UIViewControllerType = PagingListViewController<List, ListView>
     
-    private let paging: Paging
-    private let setup: ((List)->())?
+    private var snapshot = Snapshot<ListView>()
+    private let refreshControl: Bool
+    private let emptyState: any View
+    private let updatePaging: (ListTracker<List, ListView>)->()
+    private let setup: ((ListTracker<List, ListView>)->())?
     
-    public init(_ paging: Paging, setup: ((List)->())? = nil) {
-        self.paging = paging
+    public init<T>(typed paging: Paging<T>?,
+                refreshControl: Bool = true,
+                emptyState: any View = EmptyView(),
+                data: @escaping (inout Snapshot<ListView>, [T])->(),
+                setup: ((ListTracker<List, ListView>)->())? = nil) {
+        self.init(paging as BasePaging?,
+                  refreshControl: refreshControl,
+                  emptyState: emptyState,
+                  data: { data(&$0, $1 as! [T]) },
+                  setup: setup)
+    }
+    
+    public init(_ paging: BasePaging?,
+                refreshControl: Bool = true,
+                emptyState: any View = EmptyView(),
+                data: @escaping (inout Snapshot<ListView>, [AnyHashable])->(),
+                setup: ((ListTracker<List, ListView>)->())? = nil) {
+        self.updatePaging = { $0.set(paging: paging) }
+        self.emptyState = emptyState
+        data(&snapshot, paging?.content.items ?? [])
+        self.refreshControl = refreshControl
         self.setup = setup
     }
     
     public func makeUIViewController(context: Context) -> UIViewControllerType {
-        let vc = UIViewControllerType(paging: paging)
-        setup?(vc.tracker.list)
+        let vc = UIViewControllerType(refreshControl: refreshControl)
+        setup?(vc.tracker)
         return vc
     }
     
-    public func updateUIViewController(_ uiViewController: UIViewControllerType, context: Context) { }
+    public func updateUIViewController(_ uiViewController: UIViewControllerType, context: Context) {
+        let oldPaging = uiViewController.tracker.paging
+        updatePaging(uiViewController.tracker)
+        uiViewController.emptyState.rootView = emptyState.asAny
+        uiViewController.tracker.set(snapshot, animated: oldPaging === uiViewController.tracker.paging)
+    }
 }
 #endif

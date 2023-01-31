@@ -5,16 +5,43 @@
 //  Created by Ilya Kuznetsov on 31/12/2022.
 //
 
+import SwiftUI
 #if os(iOS)
 import UIKit
 #else
 import AppKit
 #endif
 
+extension PlatformCollectionCell: WithConfiguration { }
+
+extension PlatformCollectionDataSource: DataSource {
+    
+    public func apply(_ snapshot: DataSourceSnapshot, animated: Bool) async {
+        if #available(iOS 15, *) {
+            await apply(snapshot, animatingDifferences: animated)
+        } else {
+            await withCheckedContinuation { continuation in
+                apply(snapshot, animatingDifferences: animated) {
+                    continuation.resume()
+                }
+            }
+        }
+    }
+}
+
+public struct CollectionCell {
+    let layout: (NSCollectionLayoutEnvironment)->NSCollectionLayoutSection
+    
+    init(layout: ((NSCollectionLayoutEnvironment)->NSCollectionLayoutSection)?) {
+        self.layout = layout ?? { .grid($0) }
+    }
+}
+
 open class CollectionView: PlatformCollectionView, ListView {
-    public typealias Cell = CollectionCell
-    public typealias CellSize = CGSize
-    public typealias ContainerCell = ContainerCollectionItem
+    public typealias CellAdditions = CollectionCell
+    public typealias Cell = PlatformCollectionCell
+    public typealias Content = PlatformCollectionDataSource
+    public typealias Container = ContainerCollectionItem
     
     public var scrollView: PlatformScrollView {
         #if os(iOS)
@@ -25,7 +52,7 @@ open class CollectionView: PlatformCollectionView, ListView {
     }
     
     #if os(iOS)
-    public override init(frame: CGRect, collectionViewLayout layout: UICollectionViewLayout) {
+    public required override init(frame: CGRect, collectionViewLayout layout: UICollectionViewLayout) {
         super.init(frame: frame, collectionViewLayout: layout)
         setup()
     }
@@ -40,79 +67,99 @@ open class CollectionView: PlatformCollectionView, ListView {
         delaysContentTouches = false
         backgroundColor = .clear
         alwaysBounceVertical = true
-        contentInsetAdjustmentBehavior = .always
+        contentInsetAdjustmentBehavior = .automatic
+        showsHorizontalScrollIndicator = false
     }
     
     open override func touchesShouldCancel(in view: UIView) -> Bool {
         view is UIControl ? true : super.touchesShouldCancel(in: view)
     }
+    
     #else
     open override var acceptsFirstResponder: Bool { false }
+    #endif
+}
+
+public extension Snapshot where View == CollectionView {
     
-    open override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        (delegate as? Collection)?.visible = window != nil
+    typealias SectionLayout = (NSCollectionLayoutEnvironment)->NSCollectionLayoutSection
+    
+    #if os(iOS)
+    mutating func addSection<Cell: PlatformCollectionCell, Item: Hashable>(_ items: [Item],
+                                                                           cell: Cell.Type,
+                                                                           source: ((Item)->CellSource)? = nil,
+                                                                           fill: @escaping (Item, Cell)->(),
+                                                                           action: ((Item)->())? = nil,
+                                                                           longPress: ((Item)->())? = nil,
+                                                                           prefetch: ((Item)->PrefetchCancel)? = nil,
+                                                                           layout: SectionLayout? = nil) {
+        addSection(items, section: .init(Item.self,
+                                         cell: cell,
+                                         source: source,
+                                         fill: fill,
+                                         action: action,
+                                         secondaryAction: longPress,
+                                         prefetch: prefetch,
+                                         additions: .init(layout: layout)))
+    }
+
+    mutating func addSection<Item: Hashable, Content: SwiftUI.View>(_ items: [Item],
+                                             fill: @escaping (Item)-> Content ,
+                                             longPress: ((Item)->())? = nil,
+                                             prefetch: ((Item)->PrefetchCancel)? = nil,
+                                             layout: SectionLayout? = nil) {
+        addSection(items, section: .init(Item.self,
+                                         cell: ContainerCollectionItem.self,
+                                         source: { _ in .code(reuseId: String(describing: Item.self)) },
+                                         fill: { item, cell in
+            if #available(iOS 16, *) {
+                cell.contentConfiguration = UIHostingConfiguration { fill(item) }.margins(.all, 0)
+            } else {
+                cell.contentConfiguration = UIHostingConfigurationBackport { fill(item).ignoresSafeArea() }.margins(.all, 0)
+            }
+        }, secondaryAction: longPress, prefetch: prefetch, additions: .init(layout: layout)))
+    }
+
+    #else
+    mutating func add<Cell: PlatformCollectionCell, Item: Hashable>(_ items: [Item],
+                                                                    cell: Cell.Type,
+                                                                    source: ((Item)->CellSource)? = nil,
+                                                                    fill: @escaping (Item, Cell)->(),
+                                                                    action: ((Item)->())? = nil,
+                                                                    doubleClick: ((Item)->())? = nil,
+                                                                    layout: SectionLayout? = nil) {
+        addSection(items, section: .init(Item.self,
+                                         cell: cell,
+                                         source: source,
+                                         fill: fill,
+                                         action: action,
+                                         secondaryAction: doubleClick,
+                                         additions: .init(layout: layout)))
     }
     #endif
 }
 
-public struct CollectionCell: ListCell {
+class CollectionViewLayout: PlatformCollectionLayout {
     
-    let info: CellInfo<PlatformCollectionCell, CGSize>
-    
-    #if os(macOS)
-    public let doubleClick: (AnyHashable)->()
-    #endif
-    
-    public let supports: (AnyHashable)->Bool
+    override func shouldInvalidateLayout(forBoundsChange newBounds: CGRect) -> Bool {
+        collectionView?.bounds.size ?? newBounds.size != newBounds.size
+    }
 }
 
-open class Collection: BaseList<CollectionView> {
+@MainActor
+public final class Collection: ListContainer<CollectionView>, PlatformCollectionDelegate, PrefetchCollectionProtocol {
     
-    // when new items appears scroll aligns to the top
-    public var expandsBottom: Bool = true
-    
-    public var staticCellSize: CGSize? {
-        didSet { view.flowLayout?.itemSize = staticCellSize ?? .zero }
-    }
-    
-    #if os(macOS)
-    @objc private func doubleClickAction(_ sender: NSClickGestureRecognizer) {
-        let location = sender.location(in: view)
-        if let indexPath = view.indexPathForItem(at: location) {
-            let item = items[indexPath.item]
-            cell(item)?.doubleClick(item)
-        }
-    }
-    #endif
-    
-    public required init(listView: CollectionView? = nil, emptyStateView: PlatformView) {
-        super.init(listView: listView, emptyStateView: emptyStateView)
-        delegate.add(self)
-        delegate.addConforming([PlatformCollectionDelegate.self, PlatformCollectionDataSource.self])
-        view.delegate = delegate as? PlatformCollectionDelegate
-        view.dataSource = delegate as? PlatformCollectionDataSource
-        
-        #if os(macOS)
-        view.isSelectable = true
-        let recognizer = NSClickGestureRecognizer(target: self, action: #selector(doubleClickAction(_:)))
-        recognizer.numberOfClicksRequired = 2
-        recognizer.delaysPrimaryMouseButtonEvents = false
-        view.addGestureRecognizer(recognizer)
-        #endif
-    }
-    
-    open override class func createDefaultView() -> CollectionView {
+    public static func createDefaultView() -> CollectionView {
         #if os(iOS)
-        let collection = CollectionView(frame: .zero, collectionViewLayout: VerticalLeftAlignedLayout())
+        let collection = CollectionView(frame: .zero, collectionViewLayout: UICollectionViewLayout())
         #else
         let scrollView = NSScrollView()
         let collection = CollectionView(frame: .zero)
+        collection.isSelectable = true
         scrollView.wantsLayer = true
         scrollView.layer?.masksToBounds = true
         scrollView.canDrawConcurrently = true
-        
-        collection.collectionViewLayout = VerticalLeftAlignedLayout()
+        collection.collectionViewLayout = layout
         scrollView.documentView = collection
         scrollView.drawsBackground = true
         collection.backgroundColors = [.clear]
@@ -120,29 +167,61 @@ open class Collection: BaseList<CollectionView> {
         return collection
     }
     
-    open override func reloadVisibleCells(excepting: Set<Int> = Set()) {
-        #if os(iOS)
-        let visibleCells = view.visibleCells
-        #else
-        let visibleCells = view.visibleItems()
-        #endif
-        visibleCells.forEach { cell in
-            if let indexPath = view.indexPath(for: cell), !excepting.contains(indexPath.item) {
-                let item = items[indexPath.item]
+    public required init(listView: CollectionView? = nil) {
+        super.init(listView: listView ?? Self.createDefaultView())
+        
+        dataSource = PlatformCollectionDataSource(collectionView: view) { [unowned self] collection, indexPath, item in
+            var info = self.snapshot.info(indexPath)?.section
+            
+            if info?.typeCheck(item) != true {
+                info = self.oldSnapshot?.info(indexPath)?.section
                 
-                if item as? PlatformView == nil {
-                    self.cell(item)?.info.fill(item, cell)
+                if info?.typeCheck(item) != true {
+                    fatalError("No info for the item")
                 }
             }
+            
+            let cell = self.view.createCell(for: info!.cell, source: info!.source(item), at: indexPath)
+            info!.fill(item, cell)
+            return cell
+        }
+        
+        let layout = CollectionViewLayout { [unowned self] index, environment in
+            if let layout = self.snapshot.sections[safe: index]?.additions?.layout {
+                return layout(environment)
+            }
+            return .grid(environment)
+        }
+        view.setCollectionViewLayout(layout, animated: false)
+        
+        delegate.addConforming(PlatformCollectionDelegate.self)
+        delegate.add(self)
+        view.delegate = delegate as? PlatformCollectionDelegate
+    }
+    
+    #if os(iOS)
+    public func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        collectionView.deselectItem(at: indexPath, animated: true)
+        if let info = snapshot.info(indexPath) {
+            info.section.action(info.item)
         }
     }
     
-    open override func update(_ items: [AnyHashable], animated: Bool, reloadCells: (Set<Int>) -> (), completion: @escaping () -> ()) {
-        view.reload(animated: animated,
-                    expandBottom: expandsBottom,
-                    oldData: self.items,
-                    newData: items,
-                    updateObjects: reloadCells,
-                    completion: completion)
+    public func collectionView(_ collectionView: UICollectionView, prefetchItemsAt indexPaths: [IndexPath]) {
+        prefetch(indexPaths)
     }
+    
+    public func collectionView(_ collectionView: UICollectionView, cancelPrefetchingForItemsAt indexPaths: [IndexPath]) {
+        cancelPrefetch(indexPaths)
+    }
+    #else
+    public func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
+        collectionView.deselectAll(nil)
+        indexPaths.forEach {
+            if let info = snapshot.info(indexPath) {
+                info.section.action(info.item)
+            }
+        }
+    }
+    #endif
 }

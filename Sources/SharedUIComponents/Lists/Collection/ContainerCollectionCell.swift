@@ -8,7 +8,7 @@ import UIKit
 import AppKit
 #endif
 
-public class ContainerCollectionItem: PlatformCollectionCell {
+public class ContainerCollectionItem: PlatformCollectionCell, ContainerCell {
     
     fileprivate var attachedView: PlatformView? {
         #if os(iOS)
@@ -18,26 +18,31 @@ public class ContainerCollectionItem: PlatformCollectionCell {
         #endif
     }
     
-    public func attach(_ viewToAttach: PlatformView) {
-        if viewToAttach == attachedView { return }
-        
-        attachedView?.removeFromSuperview()
-        
-        viewToAttach.translatesAutoresizingMaskIntoConstraints = false
-        #if os(iOS)
-        let container = contentView
-        #else
-        let container = view
-        #endif
-        
-        container.addSubview(viewToAttach)
-        container.leftAnchor.constraint(equalTo: viewToAttach.leftAnchor).isActive = true
-        container.rightAnchor.constraint(equalTo: viewToAttach.rightAnchor).isActive = true
-        container.topAnchor.constraint(equalTo: viewToAttach.topAnchor).isActive = true
-        
-        let bottom = container.bottomAnchor.constraint(equalTo: viewToAttach.bottomAnchor)
-        bottom.priority = .init(500)
-        bottom.isActive = true
+    public override func prepareForReuse() {
+        // prevent of stopping animation of activity indicator
+    }
+    
+    public func attach(viewToAttach: PlatformView) {
+        if viewToAttach != attachedView {
+            attachedView?.removeFromSuperview()
+            
+            viewToAttach.translatesAutoresizingMaskIntoConstraints = false
+            #if os(iOS)
+            let container = contentView
+            #else
+            let container = view
+            #endif
+            
+            container.addSubview(viewToAttach)
+            container.leftAnchor.constraint(equalTo: viewToAttach.leftAnchor).isActive = true
+            container.rightAnchor.constraint(equalTo: viewToAttach.rightAnchor).isActive = true
+            container.topAnchor.constraint(equalTo: viewToAttach.topAnchor).isActive = true
+            
+            let bottom = container.bottomAnchor.constraint(equalTo: viewToAttach.bottomAnchor)
+            bottom.priority = .init(500)
+            bottom.isActive = true
+        }
+        (viewToAttach as? ContainedView)?.wasReattached()
     }
     
     #if os(macOS)

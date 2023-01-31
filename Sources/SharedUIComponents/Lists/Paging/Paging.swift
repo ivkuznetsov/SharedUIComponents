@@ -31,10 +31,40 @@ class RefreshControl: UIRefreshControl {
 #endif
 
 public typealias PagingCollection = ListTracker<Collection, CollectionView>
-public typealias PagingTable = ListTracker<Table, PlatformTableView>
+public typealias TableCollection = ListTracker<Table, PlatformTableView>
+
+fileprivate let pagingLoadingSectionId = "pagingLoadingSectionId"
+
+public extension Snapshot {
+    
+    mutating func addLoading() {
+        addViewSectionId(pagingLoadingSectionId)
+    }
+}
+
+public class Paging<Item: Hashable>: BasePaging { }
+
+public struct PagingContent {
+    public let items: [AnyHashable]
+    public let next: AnyHashable?
+    
+    public init(_ items: [AnyHashable], next: AnyHashable? = nil) {
+        self.items = items
+        self.next = next
+    }
+    
+    public static var empty: PagingContent { PagingContent([]) }
+    
+    func isEqual(_ content: PagingContent) async -> Bool {
+        if items.count != content.items.count || next != content.next {
+            return false
+        }
+        return items == content.items
+    }
+}
 
 @MainActor
-public class Paging: ObservableObject {
+public class BasePaging: ObservableObject {
     
     public var performOnRefresh: (()->())? = nil
     
@@ -43,14 +73,14 @@ public class Paging: ObservableObject {
     public var firstPageCache: (save: ([AnyHashable])->(), load: ()->[AnyHashable])? = nil {
         didSet {
             if let items = firstPageCache?.load() {
-                content = Content(items, next: nil)
+                content = PagingContent(items, next: nil)
             }
         }
     }
     
-    private var paramenters: (loadPage: (_ offset: Any?) async throws -> Content, loader: LoadingHelper)!
+    private var paramenters: (loadPage: (_ offset: AnyHashable?) async throws -> PagingContent, loader: LoadingHelper)!
     
-    public func set(loadPage: @escaping (_ offset: Any?) async throws -> Content, with loader: LoadingHelper) {
+    public func set(loadPage: @escaping (_ offset: AnyHashable?) async throws -> PagingContent, with loader: LoadingHelper) {
         paramenters = (loadPage, loader)
     }
     
@@ -59,56 +89,55 @@ public class Paging: ObservableObject {
         case top
     }
     
-    public var direction = Direction.bottom
+    private let direction: Direction
+    private let initialLoading: LoadingHelper.Presentation
+    private let feedId = UUID().uuidString
     
-    public init() {}
-    
-    public struct Content {
-        public let items: [AnyHashable]
-        public let next: Any?
-        
-        public init(_ items: [AnyHashable], next: Any? = nil) {
-            self.items = items
-            self.next = next
-        }
-        
-        public static var empty: Content { Content([]) }
+    public init(direction: Direction = .bottom, initialLoading: LoadingHelper.Presentation = .opaque) {
+        self.direction = direction
+        self.initialLoading = initialLoading
     }
     
-    @Published public var content = Content.empty
+    @Published public var content = PagingContent.empty
     public let state = LoadingState()
     
-    private func append(_ content: Content) {
-        var array = self.content.items
-        var set = Set(array)
-        
+    private func append(_ content: PagingContent) {
         let itemsToAdd = direction == .top ? content.items.reversed() : content.items
+        var array = direction == .top ? self.content.items.reversed() : self.content.items
+        var set = Set(array)
+        var allItemsAreTheSame = true // backend returned the same items for the next page, prevent for infinit loading
         
         itemsToAdd.forEach {
             if !set.contains($0) {
                 set.insert($0)
-                
-                if direction == .top {
-                    array.insert($0, at: 0)
-                } else {
-                    array.append($0)
-                }
+                array.append($0)
+                allItemsAreTheSame = false
             }
         }
-        self.content = Content(array, next: content.next)
+        self.content = PagingContent(direction == .top ? array.reversed() : array, next: allItemsAreTheSame ? nil : content.next)
     }
     
-    public func refresh(showFail: Bool = false) {
+    public func initalRefresh() {
+        if state.value != .loading && content.items.isEmpty {
+            refresh()
+        }
+    }
+    
+    public func refresh(userInitiated: Bool = false) {
         performOnRefresh?()
         
-        paramenters.loader.run(content.items.isEmpty ? .opaque : (showFail ? .alertOnFail : .none), id: "feed") { [weak self] _ in
+        paramenters.loader.run(userInitiated ? .alertOnFail : (content.items.isEmpty ? initialLoading : .none), id: feedId) { [weak self] _ in
             self?.state.value = .loading
             
             do {
-                if let result = try await self?.paramenters.loadPage(nil) {
+                if let result = try await self?.paramenters.loadPage(nil),
+                   let equal = await self?.content.isEqual(result) {
+                    
                     self?.state.value = .stop
-                    self?.content = result
-                    self?.firstPageCache?.save(result.items)
+                    if !equal {
+                        self?.content = result
+                        self?.firstPageCache?.save(result.items)
+                    }
                 }
             } catch {
                 self?.state.process(error)
@@ -117,10 +146,10 @@ public class Paging: ObservableObject {
         }
     }
     
-    fileprivate func loadMoreIfAllowed() {
-        guard state.value != .loading, let next = content.next, shouldLoadMore() else { return }
+    public func loadMore() {
+        guard let next = content.next else { return }
         
-        paramenters.loader.run(.none, id: "feed") { [weak self] _ in
+        paramenters.loader.run(.none, id: feedId) { [weak self] _ in
             self?.state.value = .loading
             
             do {
@@ -134,98 +163,116 @@ public class Paging: ObservableObject {
             }
         }
     }
+    
+    fileprivate func loadMoreIfAllowed() {
+        guard state.value != .loading, shouldLoadMore() else { return }
+        
+        loadMore()
+    }
 }
 
 @MainActor
-public class ListTracker<List: BaseList<R>, R>: NSObject {
+public final class ListTracker<List: ListContainer<View>, View>: NSObject {
     
-    public let paging: Paging
     public let list: List
-    public let footer: FooterLoadingView
+    public let loadMoreView = FooterLoadingView()
     
-    public init(list: List,
-         paging: Paging,
-         hasRefreshControl: Bool = true) {
-        
-        self.list = list
+    private var observers: [AnyCancellable] = []
+    private(set) var paging: BasePaging?
+    
+    public func set<T: Hashable>(paging: Paging<T>?, data: (([T])->Snapshot<View>)? = nil) {
+        set(paging: paging, data: data == nil ? nil : { data!($0 as! [T]) })
+    }
+    
+    public func set(paging: BasePaging?, data: (([AnyHashable])->Snapshot<View>)? = nil) {
+        if self.paging === paging { return }
         self.paging = paging
-        self.footer = FooterLoadingView(state: paging.state)
-        super.init()
         
-        footer.retry = { [weak paging] in
-            paging?.loadMoreIfAllowed()
-        }
+        loadMoreView.observe(paging?.state)
+        
+        observers = []
+        paging?.$content.sink { [weak self] content in
+            if let data = data {
+                self?.set(data(content.items))
+            }
+        }.store(in: &observers)
+        
+        paging?.state.$value.sink { [weak self] state in
+            if state != .loading {
+                self?.endRefreshing()
+            }
+        }.store(in: &observers)
+    }
+    
+    public init(list: List, hasRefreshControl: Bool = true) {
+        self.list = list
+        super.init()
         list.delegate.add(self)
+        
+        loadMoreView.retry = { [weak self] in
+            guard let wSelf = self, let paging = wSelf.paging else { return }
+            if paging.content.next != nil {
+                paging.loadMoreIfAllowed()
+            } else {
+                paging.refresh(userInitiated: true)
+            }
+        }
         
         #if os(iOS)
         let refreshControl = hasRefreshControl ? RefreshControl() : nil
         refreshControl?.addTarget(self, action: #selector(refreshAction), for: .valueChanged)
         list.view.scrollView.refreshControl = refreshControl
-
-        paging.$content.sink { [weak self] content in
-            guard let wSelf = self else { return }
-            
-            wSelf.list.set(wSelf.itemsWithFooter(content), animated: false)
-            
-            if content.next != nil {
-                DispatchQueue.main.async {
-                    self?.checkEndOfList()
-                }
-            }
-        }.retained(by: self)
-        
         list.view.scrollView.publisher(for: \.contentOffset).sink { [weak self] _ in
-            self?.checkEndOfList()
-        }.retained(by: self)
-        
-        paging.state.$value.sink { [weak self] state in
-            if state != .loading {
-                self?.endRefreshing()
+            DispatchQueue.main.async {
+                self?.onScroll()
             }
         }.retained(by: self)
-        
         #else
         NotificationCenter.default.publisher(for: NSView.boundsDidChangeNotification).sink { [weak self] _ in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                self?.checkEndOfList()
+                self?.onScroll()
             }
         }.retained(by: self)
         #endif
     }
     
-    private func checkEndOfList() {
-        let footerVisisble = isFooterVisible
+    private func onScroll() {
+        guard let paging = paging, paging.content.next != nil else { return }
         
-        if case .failed(_) = paging.state.value, !footerVisisble {
+        let allowLoad = isFooterVisible == true
+        
+        if case .failed(_) = paging.state.value, !allowLoad {
             paging.state.reset()
         }
-        if paging.state.value == .stop && footerVisisble {
+        if paging.state.value == .stop && allowLoad {
             paging.loadMoreIfAllowed()
         }
     }
     
-    private func itemsWithFooter(_ content: Paging.Content?) -> [AnyHashable] {
-        let items = content?.items ?? []
+    public func set(_ snapshot: Snapshot<View>, animated: Bool = false) {
+        var result = snapshot
         
-        var noRefreshControl = true
-        #if os(iOS)
-        noRefreshControl = list.view.scrollView.refreshControl == nil
-        #endif
+        if let paging = paging, snapshot.data.sectionIdentifiers.contains(pagingLoadingSectionId) {
+            var noRefreshControl = true
+            #if os(iOS)
+            noRefreshControl = list.view.scrollView.refreshControl == nil
+            #endif
+            
+            if (noRefreshControl && paging.content.items.isEmpty) || paging.content.next != nil {
+                result.add(loadMoreView, sectionId: pagingLoadingSectionId)
+            }
+        }
         
-        if (noRefreshControl && content == nil) || content?.next != nil {
-            return items.appending(footer)
-        } else {
-            return items
+        Task {
+            await list.set(result, animated: animated)
+            await MainActor.run { onScroll() }
         }
     }
     
     private var isFooterVisible: Bool {
-        guard paging.content.next != nil else { return false }
-        
         let scrollView = list.view.scrollView
-        let frame = scrollView.convert(footer.bounds, from: footer)
         
-        var superview = footer.superview
+        var superview = loadMoreView.superview
         while superview != scrollView {
             if superview?.isHidden == true || superview == nil {
                 return false
@@ -234,10 +281,8 @@ public class ListTracker<List: BaseList<R>, R>: NSObject {
             }
         }
         
-        return (scrollView.contentSize.height > scrollView.height ||
-                scrollView.contentSize.width > scrollView.width ||
-                scrollView.contentSize.height > 0) &&
-        scrollView.bounds.intersects(frame)
+        let frame = scrollView.convert(loadMoreView.bounds, from: loadMoreView)
+        return scrollView.contentSize.height > 0 && scrollView.bounds.intersects(frame)
     }
     
     #if os(iOS)
@@ -264,7 +309,6 @@ public class ListTracker<List: BaseList<R>, R>: NSObject {
 
     func endDecelerating() {
         let scrollView = list.view.scrollView
-        
         if performedEndRefreshing && !scrollView.isDecelerating && !scrollView.isDragging {
             performedEndRefreshing = false
             DispatchQueue.main.async { [weak scrollView] in
@@ -273,13 +317,12 @@ public class ListTracker<List: BaseList<R>, R>: NSObject {
         }
         if performedRefresh {
             performedRefresh = false
-            paging.refresh(showFail: true)
+            paging?.refresh(userInitiated: true)
         }
     }
     
     private func endRefreshing() {
         let scrollView = list.view.scrollView
-        
         guard let refreshControl = scrollView.refreshControl else { return }
         
         if scrollView.isDecelerating || scrollView.isDragging {

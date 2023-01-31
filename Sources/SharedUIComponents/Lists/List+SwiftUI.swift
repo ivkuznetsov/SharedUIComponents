@@ -5,86 +5,54 @@
 //  Created by Ilya Kuznetsov on 31/12/2022.
 //
 
+#if os(iOS)
+import UIKit
 import SwiftUI
 import Combine
 
-#if os(iOS)
 public typealias GridLayout = Layout<Collection, CollectionView>
 
 public typealias ListLayout = Layout<Table, PlatformTableView>
 
-public class ListViewController<List: BaseList<R>, R>: PlatformViewController {
+public class ListViewController<List: ListContainer<R>, R>: PlatformViewController {
     
-    fileprivate let list = List(emptyStateView: PlatformView())
+    let list = List()
+    let emptyState = UIHostingController(rootView: AnyView(EmptyView()))
     
     override public func viewDidLoad() {
         super.viewDidLoad()
         list.attachTo(view)
+        list.emptyState.attach(emptyState.view)
     }
 }
 
-public struct Layout<List: BaseList<R>, R>: UIViewControllerRepresentable {
-    public typealias UIViewControllerType = ListViewController<List, R>
+@MainActor
+public struct Layout<List: ListContainer<ListView>, ListView>: UIViewControllerRepresentable {
+    public typealias UIViewControllerType = ListViewController<List, ListView>
     
-    private let items: [AnyHashable]
+    private let snapshot: Snapshot<ListView>
     private let setup: ((List)->())?
+    private let emptyState: any View
     
-    public init(_ items: [AnyHashable], setup: ((List)->())? = nil) {
-        self.items = items
+    public init(_ views: [ViewContainer], setup: ((List)->())? = nil) {
+        self.init({ $0.addSection(views) }, setup: setup)
+    }
+    
+    public init(emptyState: any View = EmptyView(), _ data: (inout Snapshot<ListView>)->(), setup: ((List)->())? = nil) {
+        var snapshot = Snapshot<ListView>()
+        data(&snapshot)
+        self.snapshot = snapshot
         self.setup = setup
+        self.emptyState = emptyState
     }
     
     public func makeUIViewController(context: Context) -> UIViewControllerType {
-        let vc = UIViewControllerType()
-        setup?(vc.list)
-        return vc
+        UIViewControllerType()
     }
     
     public func updateUIViewController(_ uiViewController: UIViewControllerType, context: Context) {
-        uiViewController.list.set(items, animated: true)
+        uiViewController.emptyState.rootView = emptyState.asAny
+        uiViewController.list.set(snapshot, animated: true)
     }
 }
-
-class DataCollectionCell: PlatformCollectionCell { }
-class DataTableCell: BaseTableViewCell { }
-
-@available(iOS 16, *)
-extension Collection {
-    
-    public func setCell<R: Hashable>(for item: R.Type,
-                                     fill: @escaping (R)-> any View,
-                                     size: @escaping (R)->CGSize) {
-        addCell(for: item,
-                type: DataCollectionCell.self,
-                fill: { item, cell in
-            cell.contentConfiguration = UIHostingConfiguration { fill(item).asAny }
-        },
-                source: .code(reuseId: String(describing: item)),
-                size: size,
-                action: nil)
-    }
-}
-
-@available(iOS 16, *)
-extension Table {
-    
-    public func setCell<R: Hashable>(for item: R.Type,
-                                     fill: @escaping (R)-> any View,
-                                     estimatedHeight: @escaping (R)->CGFloat = { _ in 150 },
-                                     height: @escaping (R)-> CGFloat = { _ in -1 },
-                                     editor: ((R)->TableCell.Editor)? = nil,
-                                     prefetch: ((R)->Table.Cancel)? = nil) {
-        addCell(for: item,
-                type: DataTableCell.self,
-                fill: { item, cell in
-            cell.contentConfiguration = UIHostingConfiguration { fill(item).asAny }
-        }, source: .code(reuseId: String(describing: item)),
-                estimatedHeight: estimatedHeight,
-                height: height,
-                action: nil,
-                editor: editor,
-                prefetch: prefetch)
-    }
-}
-
 #endif

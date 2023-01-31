@@ -7,56 +7,94 @@ import UIKit
 #else
 import AppKit
 #endif
+import Combine
 
-open class FooterLoadingView: PlatformView {
+public class FooterLoadingView: PlatformView, ContainedView {
 
-    public init(state: LoadingState) {
-        #if os(iOS)
-        let indicatorView = UIActivityIndicatorView(style: .medium)
-        let retryButton = UIButton(type: .system)
-        retryButton.setTitle("Retry", for: .normal)
-        #else
-        let indicatorView = NSProgressIndicator()
-        indicatorView.style = .spinning
-        let retryButton = NSButton()
-        retryButton.bezelStyle = .texturedRounded
-        retryButton.title = "Retry"
-        #endif
+    #if os(iOS)
+    public let indicatorView = UIActivityIndicatorView(style: .medium)
+    public private(set) lazy var retryButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Retry", for: .normal)
+        button.addTarget(self, action: #selector(retryAction), for: .touchUpInside)
+        return button
+    }()
+    #else
+    public let indicatorView: NSProgressIndicator = {
+        let indicator = NSProgressIndicator()
+        indicator.style = .spinning
+        return indicator
+    }()
+    
+    public lazy var retryButton: NSButton = {
+        let button = NSButton()
+        button.bezelStyle = .texturedRounded
+        button.title = "Retry"
+        button.target = self
+        button.action = #selector(retryAction)
+        return button
+    }()
+    #endif
+    
+    open override func didMoveToSuperview() {
+        super.didMoveToSuperview()
+        if state?.value == .loading {
+            indicatorView.startAnimating()
+        }
+    }
+    
+    open override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if state?.value == .loading {
+            indicatorView.startAnimating()
+        }
+    }
+    
+    public func wasReattached() {
+        if state?.value == .loading {
+            indicatorView.startAnimating()
+        }
+    }
+    
+    private var observer: AnyCancellable?
+    
+    private var state: LoadingState? {
+        didSet {
+            observer = state?.$value.sink { [weak self] state in
+                if case .failed(_) = state {
+                    self?.retryButton.isHidden = false
+                } else {
+                    self?.retryButton.isHidden = true
+                }
+                #if os(iOS)
+                if state == .loading {
+                    self?.indicatorView.startAnimating()
+                } else {
+                    self?.indicatorView.stopAnimating()
+                }
+                #else
+                if state == .loading {
+                    self?.indicatorView.startAnimation(nil)
+                } else {
+                    self?.indicatorView.stopAnimation(nil)
+                }
+                #endif
+            }
+        }
+    }
+    
+    public func observe(_ state: LoadingState?) {
+        self.state = state
+    }
+    
+    public init() {
         super.init(frame: .zero)
-        
-        #if os(iOS)
-        retryButton.addTarget(self, action: #selector(retryAction), for: .touchUpInside)
-        #else
-        retryButton.target = self
-        retryButton.action = #selector(retryAction)
-        #endif
         attach(retryButton, position: .center)
         attach(indicatorView, position: .center)
         
         let constraint = heightAnchor.constraint(equalToConstant: 50)
         constraint.priority = .init(900)
         constraint.isActive = true
-        
-        state.$value.sink { state in
-            if case .failed(_) = state {
-                retryButton.isHidden = false
-            } else {
-                retryButton.isHidden = true
-            }
-            #if os(iOS)
-            if state == .loading {
-                indicatorView.startAnimating()
-            } else {
-                indicatorView.stopAnimating()
-            }
-            #else
-            if state == .loading {
-                indicatorView.startAnimation(nil)
-            } else {
-                indicatorView.stopAnimation(nil)
-            }
-            #endif
-        }.retained(by: self)
     }
     
     required public init?(coder: NSCoder) {

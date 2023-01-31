@@ -15,6 +15,7 @@ public extension PlatformView {
         case layoutMargins
         case safeArea
         case autoresizing
+        case autoresizingSafeArea
     }
     
     enum Position {
@@ -28,13 +29,17 @@ public extension PlatformView {
         switch type {
         case .safeArea:
             if #available(iOS 13, macOS 11, *) {
-                if position == .center { fallthrough }
-                
                 view.translatesAutoresizingMaskIntoConstraints = false
-                safeAreaLayoutGuide.leftAnchor.constraint(equalTo: view.leftAnchor).isActive = true
-                safeAreaLayoutGuide.rightAnchor.constraint(equalTo: view.rightAnchor).isActive = true
-                safeAreaLayoutGuide.topAnchor.constraint(equalTo: view.topAnchor).isActive = true
-                safeAreaLayoutGuide.bottomAnchor.constraint(equalTo: view.bottomAnchor).isActive = true
+                
+                if position == .center {
+                    safeAreaLayoutGuide.centerXAnchor.constraint(equalTo: view.centerXAnchor).isActive = true
+                    safeAreaLayoutGuide.centerYAnchor.constraint(equalTo: view.centerYAnchor).isActive = true
+                } else {
+                    safeAreaLayoutGuide.leftAnchor.constraint(equalTo: view.leftAnchor).isActive = true
+                    safeAreaLayoutGuide.rightAnchor.constraint(equalTo: view.rightAnchor).isActive = true
+                    safeAreaLayoutGuide.topAnchor.constraint(equalTo: view.topAnchor).isActive = true
+                    safeAreaLayoutGuide.bottomAnchor.constraint(equalTo: view.bottomAnchor).isActive = true
+                }
             } else {
                 fallthrough
             }
@@ -71,6 +76,26 @@ public extension PlatformView {
             }
         
         case .autoresizing:
+            if position == .center {
+                #if os(iOS)
+                view.center = CGPoint(x: width / 2, y: height / 2)
+                view.autoresizingMask = [.flexibleTopMargin, .flexibleLeftMargin, .flexibleRightMargin, .flexibleBottomMargin]
+                #else
+                view.setFrameOrigin(.init(x: width / 2 - view.width / 2, y: height / 2 - view.height / 2))
+                view.autoresizingMask = [.height, .width]
+                #endif
+            } else {
+                view.frame = CGRect(x: 0, y: 0, width: width, height: height)
+                #if os(iOS)
+                view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+                #else
+                view.autoresizingMask = [.minXMargin, .maxXMargin, .minYMargin, .maxYMargin]
+                #endif
+            }
+        case .autoresizingSafeArea:
+            let width = self.width - safeAreaInsets.left - safeAreaInsets.right
+            let height = self.height - safeAreaInsets.top - safeAreaInsets.bottom
+            
             if position == .center {
                 #if os(iOS)
                 view.center = CGPoint(x: width / 2, y: height / 2)

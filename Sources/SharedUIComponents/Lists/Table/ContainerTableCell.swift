@@ -8,7 +8,12 @@ import UIKit
 import AppKit
 #endif
 
-public class ContainerTableCell: BaseTableViewCell {
+public protocol ContainedView {
+    
+    func wasReattached()
+}
+
+public class ContainerTableCell: BaseTableViewCell, ContainerCell {
     
     fileprivate var attachedView: PlatformView? {
         #if os(iOS)
@@ -18,13 +23,14 @@ public class ContainerTableCell: BaseTableViewCell {
         #endif
     }
     
-    public func attach(viewToAttach: PlatformView, type: PlatformView.AttachType) {
-        if viewToAttach == attachedView { return }
-        
-        #if os(iOS)
-        backgroundColor = .clear
-        #endif
-        attachedView?.removeFromSuperview()
-        attach(viewToAttach, type: type)
+    public func attach(viewToAttach: PlatformView) {
+        if viewToAttach != attachedView {
+            #if os(iOS)
+            backgroundColor = .clear
+            #endif
+            attachedView?.removeFromSuperview()
+            attach(viewToAttach)
+        }
+        (viewToAttach as? ContainedView)?.wasReattached()
     }
 }

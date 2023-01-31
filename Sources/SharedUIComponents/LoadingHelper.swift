@@ -6,10 +6,20 @@ import Foundation
 import Combine
 import CommonUtils
 
+#if os(iOS)
+import UIKit
+#endif
+
 @MainActor
 public class LoadingHelper: ObservableObject {
 
-    public init() { }
+    public init() {
+        print("loading init")
+    }
+    
+    deinit {
+        print("loading deinit")
+    }
     
     public enum Presentation {
         
@@ -42,6 +52,7 @@ public class LoadingHelper: ObservableObject {
     public var didFail: AnyPublisher<Fail, Never> { failPublisher.eraseToAnyPublisher() }
     
     @Published public private(set) var processing: [String:TaskWrapper] = [:]
+    @Published public private(set) var opaqueFail: Fail?
     
     public enum Options: Hashable {
         case showsProgress
@@ -49,15 +60,42 @@ public class LoadingHelper: ObservableObject {
     
     public class TaskWrapper: Hashable, ObservableObject {
         
-        @Published public var progress: Double = 0
+        @MainActor @Published public var progress: Double = 0
         public let presentation: Presentation
         
         private let id: String
+        #if os(iOS)
+        private var backgroundTaskId: UIBackgroundTaskIdentifier?
+        #endif
         public var cancel: (()->())!
         
-        init(id: String, presentation: Presentation) {
+        @MainActor init(id: String, backgroundWork: Bool, presentation: Presentation) {
             self.id = id
             self.presentation = presentation
+            
+            if backgroundWork {
+                #if os(iOS)
+                backgroundTaskId = UIApplication.shared.beginBackgroundTask { [weak self] in
+                    self?.endTask()
+                }
+                #endif
+            }
+        }
+        
+        #if os(iOS)
+        private func endTask() {
+            if let task = backgroundTaskId {
+                Task { @MainActor in
+                    UIApplication.shared.endBackgroundTask(task)
+                }
+            }
+        }
+        #endif
+        
+        fileprivate func update(progress: Double) {
+            Task { @MainActor in
+                self.progress = progress
+            }
         }
         
         public func hash(into hasher: inout Hasher) {
@@ -66,44 +104,64 @@ public class LoadingHelper: ObservableObject {
         
         public static func == (lhs: LoadingHelper.TaskWrapper, rhs: LoadingHelper.TaskWrapper) -> Bool { lhs.hashValue == rhs.hashValue }
         
-        deinit { cancel() }
+        deinit {
+            cancel()
+            #if os(iOS)
+            endTask()
+            #endif
+        }
     }
     
     public func run(_ presentation: Presentation,
                     id: String? = nil,
+                    backgroundWork: Bool = false,
                     _ action: @escaping (_ progress: @escaping (Double)->()) async throws -> ()) {
         
         let id = id ?? UUID().uuidString
         
-        let wrapper = TaskWrapper(id: id, presentation: presentation)
+        let wrapper = TaskWrapper(id: id, backgroundWork: backgroundWork, presentation: presentation)
         
-        let task = Task { [weak self, weak wrapper] in
+        let task = Task.detached { [weak self, weak wrapper] in
             do {
-                try await action { progress in
-                    DispatchQueue.main.async {
-                        wrapper?.progress = progress
-                    }
+                try await action {
+                    wrapper?.update(progress: $0)
                 }
             } catch {
-                if !error.isCancelled {
-                    self?.failPublisher.send(Fail(error: error,
-                                                  retry: { _ = self?.run(presentation, id: id, action) },
-                                                  presentation: presentation))
+                if !error.isCancelled, let wSelf = self {
+                    DispatchQueue.main.async {
+                        let fail = Fail(error: error,
+                                        retry: { [weak wSelf] in _ = wSelf?.run(presentation, id: id, action) },
+                                        presentation: presentation)
+                        
+                        if presentation == .opaque {
+                            wSelf.opaqueFail = fail
+                        }
+                        wSelf.failPublisher.send(fail)
+                    }
                 }
             }
-            self?.processing[id] = nil
+            await self?.removeProcessing(id: id)
         }
         wrapper.cancel = { task.cancel() }
         
         processing[id]?.cancel()
         processing[id] = wrapper
         
+        if (presentation == .opaque || presentation == .translucent) && opaqueFail != nil {
+            opaqueFail = nil
+        }
+        
         if task.isCancelled {
             processing[id] = nil
         }
     }
     
+    private func removeProcessing(id: String) {
+        processing[id] = nil
+    }
+    
     public func cancelOperations() {
+        opaqueFail = nil
         processing.forEach { $0.value.cancel() }
     }
 }
