@@ -192,8 +192,10 @@ public final class ListTracker<List: ListContainer<View>, View>: NSObject {
         
         observers = []
         paging?.$content.sink { [weak self] content in
-            if let data = data {
-                self?.set(data(content.items))
+            DispatchQueue.main.async {
+                if let data = data {
+                    self?.set(data(content.items))
+                }
             }
         }.store(in: &observers)
         
