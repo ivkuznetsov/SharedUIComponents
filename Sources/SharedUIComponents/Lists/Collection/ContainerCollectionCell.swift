@@ -18,9 +18,9 @@ public class ContainerCollectionItem: PlatformCollectionCell, ContainerCell {
         #endif
     }
     
-    public override func prepareForReuse() {
+   // public override func prepareForReuse() { // fix this later
         // prevent of stopping animation of activity indicator
-    }
+    //}
     
     public func attach(viewToAttach: PlatformView) {
         if viewToAttach != attachedView {

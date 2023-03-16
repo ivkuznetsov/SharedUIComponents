@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import CommonUtils
 
 @available (iOS 15, *)
 public struct FailedBar: View {
