@@ -199,11 +199,13 @@ public final class ListTracker<List: ListContainer<View>, View>: NSObject {
             }
         }.store(in: &observers)
         
+        #if os(iOS)
         paging?.state.$value.sink { [weak self] state in
             if state != .loading {
                 self?.endRefreshing()
             }
         }.store(in: &observers)
+        #endif
     }
     
     public init(list: List, hasRefreshControl: Bool = true) {

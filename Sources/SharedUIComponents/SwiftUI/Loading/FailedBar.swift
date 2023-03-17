@@ -8,6 +8,8 @@
 import SwiftUI
 import CommonUtils
 
+#if os(iOS)
+
 @available (iOS 15, *)
 public struct FailedBar: View {
     
@@ -26,3 +28,5 @@ public struct FailedBar: View {
         }
     }
 }
+
+#endif

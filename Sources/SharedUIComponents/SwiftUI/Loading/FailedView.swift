@@ -8,6 +8,8 @@
 import SwiftUI
 import CommonUtils
 
+#if os(iOS)
+
 @available (iOS 15, *)
 public struct FailedView: FailedViewProtocol {
     
@@ -39,3 +41,5 @@ public struct FailedView: FailedViewProtocol {
         }
     }
 }
+
+#endif

@@ -12,7 +12,10 @@ import SwiftUI
 import AppKit
 #endif
 
-extension PlatformTableCell: WithConfiguration { }
+extension PlatformTableCell: WithConfiguration {
+    
+    public var view: PlatformView { self }
+}
 
 #if os(macOS)
 public class TableView: PlatformTableView {
@@ -115,20 +118,18 @@ public extension Snapshot where View == PlatformTableView {
     }
 
     #else
-    mutating func add<Cell: PlatformCollectionCell, Item: Hashable>(_ items: [Item],
+    mutating func add<Cell: PlatformTableCell, Item: Hashable>(_ items: [Item],
                                                                     cell: Cell.Type,
                                                                     source: ((Item)->CellSource)? = nil,
                                                                     fill: @escaping (Item, Cell)->(),
                                                                     action: ((Item)->())? = nil,
-                                                                    doubleClick: ((Item)->())? = nil,
-                                                                    layout: SectionLayout? = nil) {
+                                                                    doubleClick: ((Item)->())? = nil) {
         addSection(items, section: .init(Item.self,
                                          cell: cell,
                                          source: source,
                                          fill: fill,
                                          action: action,
-                                         secondaryAction: doubleClick,
-                                         additions: .init(layout: layout)))
+                                         secondaryAction: doubleClick))
     }
     #endif
 }
@@ -139,7 +140,7 @@ public final class Table: ListContainer<PlatformTableView>, PlatformTableDelegat
     #if os(macOS)
     public var deselectedAll: (()->())?
     
-    public var selectedItem: AnyHashable? {
+    /*public var selectedItem: AnyHashable? {
         set {
             if let item = newValue, let index = items.firstIndex(of: item) {
                 FirstResponderPreserver.performWith(view.window) {
@@ -150,7 +151,7 @@ public final class Table: ListContainer<PlatformTableView>, PlatformTableDelegat
             }
         }
         get { item(IndexPath(item: view.selectedRow, section: 0)) }
-    }
+    }*/
     #endif
     
     static func createDefaultView() -> PlatformTableView {
@@ -185,6 +186,7 @@ public final class Table: ListContainer<PlatformTableView>, PlatformTableDelegat
     public required init(listView: PlatformTableView? = nil) {
         super.init(listView: listView ?? Self.createDefaultView())
         
+        #if os(iOS)
         dataSource = PlatformTableDataSource(tableView: view) { [unowned self] tableView, indexPath, item in
             guard let info = self.snapshot.info(indexPath)?.section else {
                 fatalError("Please specify cell for \(item)")
@@ -193,6 +195,20 @@ public final class Table: ListContainer<PlatformTableView>, PlatformTableDelegat
             info.fill(item, cell)
             return cell
         }
+        #else
+        dataSource = PlatformTableDataSource(tableView: view) { tableView, tableColumn, row, identifier in
+            NSView()
+        }
+        dataSource.rowViewProvider = { [unowned self] tableView, index, item in
+            guard let info = self.snapshot.info(IndexPath(item: index, section: 0))?.section else {
+                fatalError("Please specify cell for \(item)")
+            }
+            let cell = view.createCell(for: info.cell, source: info.source(item))
+            info.fill(item, cell)
+            return cell
+        }
+        #endif
+        
         delegate.add(self)
         delegate.addConforming(PlatformTableDelegate.self)
         view.delegate = delegate as? PlatformTableDelegate
@@ -200,11 +216,10 @@ public final class Table: ListContainer<PlatformTableView>, PlatformTableDelegat
         #if os(iOS)
         view.tableFooterView = UIView()
         #else
-        view.menu = NSMenu()
-        view.menu?.delegate = self
+        //view.menu = NSMenu()
+        //view.menu?.delegate = self
         view.wantsLayer = true
         view.target = self
-        view.doubleAction = #selector(doubleClickAction(_:))
         view.usesAutomaticRowHeights = true
         #endif
     }
@@ -262,18 +277,22 @@ public final class Table: ListContainer<PlatformTableView>, PlatformTableDelegat
         } else {
             selected.forEach {
                 view.deselectRow($0)
-                if let item = container.item($0) {
-                    cells.info(item)?.action(item)
+                if let info = snapshot.info(.init(item: $0, section: 0)) {
+                    info.section.action(info.item)
                 }
             }
         }
     }
-    
-    public func menuNeedsUpdate(_ menu: NSMenu) {
+    /*
+    @objc public func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
+        if let info = snapshot.info(.init(index: view.clickedRow)) {
+            info.section.
+        }
+        
         if let item = item(.init(row: view.clickedRow, section: 0)) {
             cells.info(item)?.menuItems(item).forEach { menu.addItem($0) }
         }
-    }
+    }*/
     #endif
 }

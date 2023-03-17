@@ -5,6 +5,8 @@
 import SwiftUI
 import CommonUtils
 
+#if os(iOS)
+
 @available (iOS 15, *)
 fileprivate extension ProgressView {
     
@@ -51,3 +53,5 @@ public struct LoadingView: LoadingViewProtocol {
         }
     }
 }
+
+#endif

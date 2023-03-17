@@ -22,11 +22,15 @@ public extension NSCollectionLayoutItem {
 
 public extension NSCollectionLayoutSection {
     
+    #if os(iOS)
     static func list(_ environment: NSCollectionLayoutEnvironment) -> NSCollectionLayoutSection {
         .list(using: .init(appearance: .plain), layoutEnvironment: environment)
     }
+    #endif
     
-    static func grid(height: CGFloat? = nil, _ environment: NSCollectionLayoutEnvironment, spacing: NSDirectionalEdgeInsets = .zero) -> NSCollectionLayoutSection {
+    static func grid(height: CGFloat? = nil,
+                     _ environment: NSCollectionLayoutEnvironment,
+                     spacing: NSDirectionalEdgeInsets = .init(top: 0, leading: 0, bottom: 0, trailing: 0)) -> NSCollectionLayoutSection {
         let itemSize = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1.0),
                                               heightDimension: height != nil ? .absolute(height!) : .estimated(150))
         let item = NSCollectionLayoutItem(layoutSize: itemSize)

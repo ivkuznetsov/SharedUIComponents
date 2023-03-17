@@ -59,7 +59,7 @@ public extension PlatformCollectionView {
         #endif
     }
     
-    func enumerateVisibleCells(_ action: (IndexPath, UICollectionViewCell)->()) {
+    func enumerateVisibleCells(_ action: (IndexPath, PlatformCollectionCell)->()) {
         #if os(iOS)
         let visibleCells = visibleCells
         #else

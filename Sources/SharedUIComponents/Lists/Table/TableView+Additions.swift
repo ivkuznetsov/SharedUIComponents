@@ -66,10 +66,10 @@ public extension PlatformTableView {
             }
         }
         #else
-        let rows = container.view.rows(in: container.view.visibleRect)
+        let rows = rows(in: visibleRect)
         for i in rows.location..<(rows.location + rows.length) {
-            if let view = container.view.rowView(atRow: i, makeIfNecessary: false) as? BaseTableViewCell {
-                action(IndexPath(row: i, section: 0), view)
+            if let view = rowView(atRow: i, makeIfNecessary: false) as? BaseTableViewCell {
+                action(IndexPath(item: i, section: 0), view)
             }
         }
         #endif

@@ -12,7 +12,12 @@ import UIKit
 import AppKit
 #endif
 
-extension PlatformCollectionCell: WithConfiguration { }
+extension PlatformCollectionCell: WithConfiguration {
+    
+    #if os(iOS)
+    public var view: UIView { self }
+    #endif
+}
 
 extension PlatformCollectionDataSource: DataSource {
     
@@ -159,7 +164,6 @@ public final class Collection: ListContainer<CollectionView>, PlatformCollection
         scrollView.wantsLayer = true
         scrollView.layer?.masksToBounds = true
         scrollView.canDrawConcurrently = true
-        collection.collectionViewLayout = layout
         scrollView.documentView = collection
         scrollView.drawsBackground = true
         collection.backgroundColors = [.clear]
@@ -182,7 +186,7 @@ public final class Collection: ListContainer<CollectionView>, PlatformCollection
             }
             
             let cell = self.view.createCell(for: info!.cell, source: info!.source(item), at: indexPath)
-            info!.fill(item, cell)
+            info!.fill(item, cell.view)
             return cell
         }
         
@@ -192,7 +196,11 @@ public final class Collection: ListContainer<CollectionView>, PlatformCollection
             }
             return .grid(environment)
         }
+        #if os(iOS)
         view.setCollectionViewLayout(layout, animated: false)
+        #else
+        view.collectionViewLayout = layout
+        #endif
         
         delegate.addConforming(PlatformCollectionDelegate.self)
         delegate.add(self)
@@ -218,7 +226,7 @@ public final class Collection: ListContainer<CollectionView>, PlatformCollection
     public func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
         collectionView.deselectAll(nil)
         indexPaths.forEach {
-            if let info = snapshot.info(indexPath) {
+            if let info = snapshot.info($0) {
                 info.section.action(info.item)
             }
         }

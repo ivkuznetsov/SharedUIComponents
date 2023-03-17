@@ -10,7 +10,9 @@ import AppKit
 
 public protocol ContainedView {
     
+    #if os(iOS)
     func wasReattached()
+    #endif
 }
 
 public class ContainerTableCell: BaseTableViewCell, ContainerCell {
@@ -31,6 +33,9 @@ public class ContainerTableCell: BaseTableViewCell, ContainerCell {
             attachedView?.removeFromSuperview()
             attach(viewToAttach)
         }
+        
+        #if os(iOS)
         (viewToAttach as? ContainedView)?.wasReattached()
+        #endif
     }
 }

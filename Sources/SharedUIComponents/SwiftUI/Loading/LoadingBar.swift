@@ -8,6 +8,8 @@
 import SwiftUI
 import CommonUtils
 
+#if os(iOS)
+
 @available (iOS 15, *)
 public struct LoadingBar: View {
     
@@ -63,3 +65,5 @@ public struct LoadingBar: View {
         }
     }
 }
+
+#endif

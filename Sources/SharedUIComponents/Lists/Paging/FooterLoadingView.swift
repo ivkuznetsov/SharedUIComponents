@@ -19,22 +19,6 @@ public class FooterLoadingView: PlatformView, ContainedView {
         button.addTarget(self, action: #selector(retryAction), for: .touchUpInside)
         return button
     }()
-    #else
-    public let indicatorView: NSProgressIndicator = {
-        let indicator = NSProgressIndicator()
-        indicator.style = .spinning
-        return indicator
-    }()
-    
-    public lazy var retryButton: NSButton = {
-        let button = NSButton()
-        button.bezelStyle = .texturedRounded
-        button.title = "Retry"
-        button.target = self
-        button.action = #selector(retryAction)
-        return button
-    }()
-    #endif
     
     open override func didMoveToSuperview() {
         super.didMoveToSuperview()
@@ -55,6 +39,22 @@ public class FooterLoadingView: PlatformView, ContainedView {
             indicatorView.startAnimating()
         }
     }
+    #else
+    public let indicatorView: NSProgressIndicator = {
+        let indicator = NSProgressIndicator()
+        indicator.style = .spinning
+        return indicator
+    }()
+    
+    public lazy var retryButton: NSButton = {
+        let button = NSButton()
+        button.bezelStyle = .texturedRounded
+        button.title = "Retry"
+        button.target = self
+        button.action = #selector(retryAction)
+        return button
+    }()
+    #endif
     
     private var observer: AnyCancellable?
     

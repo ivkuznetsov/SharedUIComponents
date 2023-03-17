@@ -42,7 +42,10 @@ public class ContainerCollectionItem: PlatformCollectionCell, ContainerCell {
             bottom.priority = .init(500)
             bottom.isActive = true
         }
+        
+        #if os(iOS)
         (viewToAttach as? ContainedView)?.wasReattached()
+        #endif
     }
     
     #if os(macOS)

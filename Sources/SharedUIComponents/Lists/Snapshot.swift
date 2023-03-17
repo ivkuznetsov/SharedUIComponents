@@ -81,6 +81,7 @@ public struct Snapshot<View: ListView> {
         addSection(views, section: viewInfo)
     }
     
+    #if os(iOS)
     mutating public func addSection<T: SwiftUI.View>(_ view: T) {
         addSection([view.inContainer()])
     }
@@ -92,6 +93,7 @@ public struct Snapshot<View: ListView> {
     mutating public func addSection(_ views: [ViewContainer]) {
         addSection(views, section: viewContainerInfo)
     }
+    #endif
     
     mutating func add(_ item: AnyHashable, sectionId: String) {
         data.appendItems([item], toSection: sectionId)

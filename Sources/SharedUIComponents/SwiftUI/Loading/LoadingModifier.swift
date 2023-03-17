@@ -5,6 +5,8 @@
 import SwiftUI
 import CommonUtils
 
+#if os(iOS)
+
 @available (iOS 15, *)
 public extension View {
     
@@ -85,3 +87,5 @@ public struct LoadingModifier: ViewModifier {
         })
     }
 }
+
+#endif

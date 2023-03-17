@@ -32,7 +32,6 @@ public struct ViewContainer: Hashable {
         hasher.combine(id)
     }
 }
-#endif
 
 public extension View {
     func inContainer(id: String? = nil) -> ViewContainer {
@@ -41,6 +40,7 @@ public extension View {
         return ViewContainer(id: id, view: self.id(id))
     }
 }
+#endif
 
 public protocol ContainerCell: WithConfiguration {
     func attach(viewToAttach: PlatformView)
@@ -55,6 +55,8 @@ public protocol WithConfiguration: AnyObject {
 #if os(iOS)
     var contentConfiguration: UIContentConfiguration? { get set }
 #endif
+    
+    var view: PlatformView { get }
 }
 
 public protocol DataSource {
@@ -63,7 +65,7 @@ public protocol DataSource {
 }
 
 public protocol ListView: PlatformView {
-    associatedtype Cell: PlatformView & WithConfiguration
+    associatedtype Cell: WithConfiguration
     associatedtype CellAdditions
     associatedtype Content: DataSource
     associatedtype Container: ContainerCell
@@ -88,7 +90,7 @@ public class ListContainer<View: ListView>: NSObject {
     var dataSource: View.Content!
     
     var oldSnapshot: Snapshot<View>?
-    public var snapshot = Snapshot<View>()
+    public private(set) var snapshot = Snapshot<View>()
     public let view: View
     public let emptyState = PlatformView()
     public let delegate = DelegateForwarder()
@@ -119,29 +121,23 @@ public class ListContainer<View: ListView>: NSObject {
         super.init()
         
         #if os(macOS)
-        let recognizer = NSClickGestureRecognizer(target: self, action: #selector(doubleClickAction(_:)))
+     /*   let recognizer = NSClickGestureRecognizer(target: self, action: #selector(doubleClickAction(_:)))
         recognizer.numberOfClicksRequired = 2
         recognizer.delaysPrimaryMouseButtonEvents = false
-        view.addGestureRecognizer(recognizer)
+        view.addGestureRecognizer(recognizer) */
         #endif
     }
     
     #if os(iOS)
     
     #else
-    @objc private func doubleClickAction(_ sender: NSClickGestureRecognizer) {
+   /* @objc func doubleClickAction(_ sender: NSClickGestureRecognizer) {
         let location = sender.location(in: view)
         if let indexPath = view.indexPathForItem(at: location) {
             let item = dataSource.items[indexPath.item]
             cell(item)?.doubleClick(item)
         }
-    }
-    
-    @objc private func doubleClickAction(_ sender: Any) {
-        if let item = items[safe: view.clickedRow] {
-            cell(item)?.doubleClick(item)
-        }
-    }
+    } */
     #endif
     
     private let serialUpdate = SerialTasks()
@@ -172,7 +168,7 @@ public class ListContainer<View: ListView>: NSObject {
     public func reloadVisibleCells() {
         view.enumerateVisibleCells { indexPath, cell in
             if let info = snapshot.info(indexPath), info.item as? PlatformView == nil {
-                info.section.fill(info.item, cell)
+                info.section.fill(info.item, cell.view)
             }
         }
     }

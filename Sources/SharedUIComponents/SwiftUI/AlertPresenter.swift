@@ -4,6 +4,8 @@
 
 import SwiftUI
 
+#if os(iOS)
+
 public extension View {
     
     @available (iOS 15, *)
@@ -46,3 +48,5 @@ struct AlertModifier: ViewModifier {
         }
     }
 }
+
+#endif
