@@ -269,7 +269,9 @@ public final class ListTracker<List: ListContainer<View>, View>: NSObject {
         
         Task {
             await list.set(result, animated: animated)
-            await MainActor.run { onScroll() }
+            await MainActor.run {
+                onScroll()
+            }
         }
     }
     

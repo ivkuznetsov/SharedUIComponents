@@ -69,7 +69,6 @@ public struct Snapshot<View: ListView> {
                                             source: { .code(reuseId: $0.reuseId) },
                                             fill: {
         $1.contentConfiguration = $0.configuration
-        
     })
     #endif
     

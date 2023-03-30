@@ -1,23 +1,11 @@
 //
-//  LoadingHelper.swift
+//  LoadingContainer.swift
 //
 
 import SwiftUI
 import CommonUtils
 
 #if os(iOS)
-
-@available (iOS 15, *)
-public extension View {
-    
-    func loading(_ helper: LoadingHelper,
-                 loadingView: @escaping (LoadingHelper.TaskWrapper)-> any LoadingViewProtocol = { LoadingView(task: $0) },
-                 failView: @escaping (LoadingHelper.Fail)-> any FailedViewProtocol = { FailedView(fail: $0) }) -> some View {
-        modifier(LoadingModifier(helper: helper,
-                                 loadingView: loadingView,
-                                 failedView: failView)).environmentObject(helper)
-    }
-}
 
 public protocol FailedViewProtocol: View {
     
@@ -30,13 +18,25 @@ public protocol LoadingViewProtocol: View {
 }
 
 @available (iOS 15, *)
-public struct LoadingModifier: ViewModifier {
+public struct LoadingContainer<Content: View>: View {
     
-    @StateObject var helper: LoadingHelper
     @EnvironmentObject private var alerts: AlertPresenter
     
-    let loadingView: (LoadingHelper.TaskWrapper)-> any LoadingViewProtocol
-    let failedView: (LoadingHelper.Fail)-> any FailedViewProtocol
+    @ObservedObject public var helper: LoadingHelper
+    
+    private let loadingView: (LoadingHelper.TaskWrapper)-> any LoadingViewProtocol
+    private let failedView: (LoadingHelper.Fail)-> any FailedViewProtocol
+    private let content: ()->Content
+    
+    public init(_ helper: LoadingHelper,
+                loadingView: @escaping (LoadingHelper.TaskWrapper) -> any LoadingViewProtocol = { LoadingView(task: $0) },
+                failedView: @escaping (LoadingHelper.Fail) -> any FailedViewProtocol = { FailedView(fail: $0) },
+                content: @escaping () -> Content) {
+        self.helper = helper
+        self.loadingView = loadingView
+        self.failedView = failedView
+        self.content = content
+    }
     
     @State private var nonblockingFail: LoadingHelper.Fail?
     
@@ -58,8 +58,8 @@ public struct LoadingModifier: ViewModifier {
         }.animation(animated ? .shortEaseOut : .none, value: loading == nil)
     }
     
-    public func body(content: Content) -> some View {
-        content.overlay {
+    public var body: some View {
+        content().overlay {
             if let fail = nonblockingFail {
                 FailedBar(fail: fail).transition(.slideWithOpacity).onAppear {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
@@ -84,7 +84,7 @@ public struct LoadingModifier: ViewModifier {
                 withAnimation(.shortEaseOut) { nonblockingFail = fail }
             default: break
             }
-        })
+        }).environmentObject(helper)
     }
 }
 

@@ -74,4 +74,10 @@ public extension PlatformTableView {
         }
         #endif
     }
+    
+    @available(iOS 15.0, *)
+    func reloadVisibleCells() {
+        let indexPaths = visibleCells.compactMap { indexPath(for: $0) }
+        reconfigureRows(at: indexPaths)
+    }
 }
