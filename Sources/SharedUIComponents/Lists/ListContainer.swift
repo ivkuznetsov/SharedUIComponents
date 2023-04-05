@@ -100,7 +100,8 @@ public class ListContainer<View: ListView>: NSObject {
     
     func prefetch(_ indexPaths: [IndexPath]) {
         indexPaths.forEach {
-            if let info = snapshot.info($0), let cancel = info.section.prefetch?(info.item) {
+            if let info = snapshot.info($0),
+               let cancel = info.section.features.prefetch?(info.item) {
                 prefetchTokens[$0] = cancel
             }
         }
@@ -168,7 +169,7 @@ public class ListContainer<View: ListView>: NSObject {
     public func reloadVisibleCells() {
         view.enumerateVisibleCells { indexPath, cell in
             if let info = snapshot.info(indexPath), info.item as? PlatformView == nil {
-                info.section.fill(info.item, cell.view)
+                info.section.creation.fill(info.item, cell.view)
             }
         }
     }

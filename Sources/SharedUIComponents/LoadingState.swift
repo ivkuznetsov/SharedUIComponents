@@ -8,7 +8,7 @@
 import Foundation
 import CommonUtils
 
-public class LoadingState: ObservableObject {
+public final class LoadingState: ObservableObject {
     public enum Value: Equatable {
         case stop
         case loading

@@ -13,7 +13,7 @@ import Combine
 public typealias PagingGrid = PagingLayout<Collection, CollectionView>
 public typealias PagingList = PagingLayout<Table, PlatformTableView>
 
-public class PagingListViewController<List: ListContainer<ListView>, ListView>: ListViewController<List, ListView> {
+public final class PagingListViewController<List: ListContainer<ListView>, ListView>: ListViewController<List, ListView> {
     
     fileprivate var tracker: ListTracker<List, ListView>!
     
@@ -24,21 +24,6 @@ public class PagingListViewController<List: ListContainer<ListView>, ListView>: 
     
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
-    }
-}
-
-public extension Paging {
-    
-    func gridLayout(refreshControl: Bool = true,
-                    data: @escaping (inout Snapshot<CollectionView>, [Item])->(),
-                    setup: ((ListTracker<Collection, CollectionView>)->())? = nil) -> some View {
-        PagingGrid(self, refreshControl: refreshControl, data: { data(&$0, $1 as! [Item]) }, setup: setup)
-    }
-    
-    func listLayout(refreshControl: Bool = true,
-                    data: @escaping (inout Snapshot<PlatformTableView>, [Item])->(),
-                    setup: ((ListTracker<Table, PlatformTableView>)->())? = nil) -> some View {
-        PagingList(self, refreshControl: refreshControl, data: { data(&$0, $1 as! [Item]) }, setup: setup)
     }
 }
 

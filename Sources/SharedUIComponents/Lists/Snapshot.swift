@@ -17,14 +17,27 @@ public typealias DataSourceSnapshot = NSDiffableDataSourceSnapshot<String, AnyHa
 public struct Snapshot<View: ListView> {
     
     struct Section {
-        let cell: View.Cell.Type
-        let source: (AnyHashable)->CellSource
-        let fill: (AnyHashable, PlatformView)->()
-        let action: (AnyHashable)->()
-        let secondaryAction: ((AnyHashable)->())?
-        let prefetch: ((AnyHashable)->PrefetchCancel?)?
-        let additions: View.CellAdditions?
-        let typeCheck: (AnyHashable)->Bool
+        
+        struct Creation {
+            let cell: View.Cell.Type
+            let fill: (AnyHashable, PlatformView)->()
+            let source: (AnyHashable)->CellSource
+        }
+        
+        struct Actions {
+            let action: (AnyHashable)->()
+            let secondaryAction: ((AnyHashable)->())?
+        }
+        
+        struct Features {
+            let prefetch: ((AnyHashable)->PrefetchCancel?)?
+            let additions: View.CellAdditions?
+            let typeCheck: (AnyHashable)->Bool
+        }
+        
+        let creation: Creation
+        let actions: Actions
+        let features: Features
         
         init<Item: Hashable, Cell>(_ item: Item.Type,
                                    cell: Cell.Type,
@@ -34,14 +47,16 @@ public struct Snapshot<View: ListView> {
                                    secondaryAction: ((Item)->())? = nil,
                                    prefetch: ((Item)->PrefetchCancel)? = nil,
                                    additions: View.CellAdditions? = nil) {
-            self.cell = cell as! View.Cell.Type
-            self.source = { source?($0 as! Item) ?? .nib }
-            self.fill = { fill($0 as! Item, $1 as! Cell) }
-            self.action = { action?($0 as! Item) }
-            self.secondaryAction = secondaryAction == nil ? nil : { secondaryAction!($0 as! Item) }
-            self.prefetch = prefetch == nil ? nil : { prefetch!($0 as! Item) }
-            self.additions = additions
-            self.typeCheck = { $0 is Item }
+            creation = .init(cell: cell as! View.Cell.Type,
+                             fill: { fill($0 as! Item, $1 as! Cell) },
+                             source: { source?($0 as! Item) ?? .nib })
+            
+            actions = .init(action: { action?($0 as! Item) },
+                            secondaryAction: secondaryAction == nil ? nil : { secondaryAction!($0 as! Item) })
+            
+            features = .init(prefetch: prefetch == nil ? nil : { prefetch!($0 as! Item) },
+                             additions: additions,
+                             typeCheck: { $0 is Item })
         }
     }
     
@@ -51,25 +66,26 @@ public struct Snapshot<View: ListView> {
         return snapshot
     }
     
-    public init() {}
-    
     private(set) var sections: [Section] = []
     public private(set) var data = DataSourceSnapshot()
+    private var sectionIds = Set<String>()
     
-    var hasPrefetch: Bool { sections.contains(where: { $0.prefetch != nil }) }
+    public init() {}
     
-    private let viewInfo = Section(PlatformView.self,
-                                   cell: View.Container.self,
-                                   source: { .code(reuseId: "\($0.hashValue)") },
-                                   fill: { $1.attach(viewToAttach: $0) })
+    var hasPrefetch: Bool { sections.contains(where: { $0.features.prefetch != nil }) }
+    
+    private var viewInfo: Section { Section(PlatformView.self,
+                                     cell: View.Container.self,
+                                     source: { .code(reuseId: "\($0.hashValue)") },
+                                     fill: { $1.attach(viewToAttach: $0) }) }
     
     #if os(iOS)
-    private let viewContainerInfo = Section(ViewContainer.self,
-                                            cell: View.Container.self,
-                                            source: { .code(reuseId: $0.reuseId) },
-                                            fill: {
+    private var viewContainerInfo: Section { Section(ViewContainer.self,
+                                                     cell: View.Container.self,
+                                                     source: { .code(reuseId: $0.reuseId) },
+                                                     fill: {
         $1.contentConfiguration = $0.configuration
-    })
+    }) }
     #endif
     
     mutating public func addSection(_ view: PlatformView) {
@@ -102,8 +118,6 @@ public struct Snapshot<View: ListView> {
         data.appendSections([id])
         sections.append(viewInfo)
     }
-    
-    private var sectionIds = Set<String>()
     
     mutating func addSection<T: Hashable>(_ items: [T], section: Section) {
         let className = String(describing: T.self)

@@ -13,7 +13,7 @@ public extension View {
 }
 
 @available (iOS 15, *)
-public class AlertPresenter: ObservableObject {
+public final class AlertPresenter: ObservableObject {
     
     fileprivate struct Info {
         let title: String

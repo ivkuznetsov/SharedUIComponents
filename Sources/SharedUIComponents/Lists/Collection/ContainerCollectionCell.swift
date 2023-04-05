@@ -8,7 +8,7 @@ import UIKit
 import AppKit
 #endif
 
-public class ContainerCollectionItem: PlatformCollectionCell, ContainerCell {
+public final class ContainerCollectionItem: PlatformCollectionCell, ContainerCell {
     
     fileprivate var attachedView: PlatformView? {
         #if os(iOS)

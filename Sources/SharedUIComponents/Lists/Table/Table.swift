@@ -191,8 +191,8 @@ public final class Table: ListContainer<PlatformTableView>, PlatformTableDelegat
             guard let info = self.snapshot.info(indexPath)?.section else {
                 fatalError("Please specify cell for \(item)")
             }
-            let cell = view.createCell(for: info.cell, source: info.source(item))
-            info.fill(item, cell)
+            let cell = view.createCell(for: info.creation.cell, source: info.creation.source(item))
+            info.creation.fill(item, cell)
             return cell
         }
         #else
@@ -228,13 +228,14 @@ public final class Table: ListContainer<PlatformTableView>, PlatformTableDelegat
     public func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         if let info = snapshot.info(indexPath) {
-            info.section.action(info.item)
+            info.section.actions.action(info.item)
         }
     }
     
     public func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
         
-        if let info = snapshot.info(indexPath), let editor = info.section.additions?.editor(info.item) {
+        if let info = snapshot.info(indexPath),
+            let editor = info.section.features.additions?.editor(info.item) {
             switch editor {
             case .delete(let action): action()
             case .insert(let action): action()
@@ -244,7 +245,8 @@ public final class Table: ListContainer<PlatformTableView>, PlatformTableDelegat
     }
     
     public func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
-        if let info = snapshot.info(indexPath), let editor = info.section.additions?.editor(info.item),
+        if let info = snapshot.info(indexPath),
+           let editor = info.section.features.additions?.editor(info.item),
            case .actions(let actions) = editor {
             let configuration = UISwipeActionsConfiguration(actions: actions())
             configuration.performsFirstActionWithFullSwipe = false
@@ -254,7 +256,8 @@ public final class Table: ListContainer<PlatformTableView>, PlatformTableDelegat
     }
     
     public func tableView(_ tableView: UITableView, editingStyleForRowAt indexPath: IndexPath) -> UITableViewCell.EditingStyle {
-        if let info = snapshot.info(indexPath), let editor = info.section.additions?.editor(info.item) {
+        if let info = snapshot.info(indexPath),
+           let editor = info.section.features.additions?.editor(info.item) {
             return editor.style
         }
         return .none

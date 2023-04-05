@@ -177,21 +177,22 @@ public final class Collection: ListContainer<CollectionView>, PlatformCollection
         dataSource = PlatformCollectionDataSource(collectionView: view) { [unowned self] collection, indexPath, item in
             var info = self.snapshot.info(indexPath)?.section
             
-            if info?.typeCheck(item) != true {
+            if info?.features.typeCheck(item) != true {
                 info = self.oldSnapshot?.info(indexPath)?.section
                 
-                if info?.typeCheck(item) != true {
+                if info?.features.typeCheck(item) != true {
                     fatalError("No info for the item")
                 }
             }
             
-            let cell = self.view.createCell(for: info!.cell, source: info!.source(item), at: indexPath)
-            info!.fill(item, cell.view)
+            let cell = self.view.createCell(for: info!.creation.cell,
+                                            source: info!.creation.source(item), at: indexPath)
+            info!.creation.fill(item, cell.view)
             return cell
         }
         
         let layout = CollectionViewLayout { [unowned self] index, environment in
-            if let layout = self.snapshot.sections[safe: index]?.additions?.layout {
+            if let layout = self.snapshot.sections[safe: index]?.features.additions?.layout {
                 return layout(environment)
             }
             return .grid(environment)
@@ -211,7 +212,7 @@ public final class Collection: ListContainer<CollectionView>, PlatformCollection
     public func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
         if let info = snapshot.info(indexPath) {
-            info.section.action(info.item)
+            info.section.actions.action(info.item)
         }
     }
     

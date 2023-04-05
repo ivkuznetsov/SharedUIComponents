@@ -15,7 +15,7 @@ import CommonUtils
 import SwiftUI
 
 #if os(iOS)
-class RefreshControl: UIRefreshControl {
+final class RefreshControl: UIRefreshControl {
     
     override func didMoveToWindow() {
         super.didMoveToWindow()
@@ -42,7 +42,7 @@ public extension Snapshot {
     }
 }
 
-public class Paging<Item: Hashable>: BasePaging { }
+public final class Paging<Item: Hashable>: BasePaging { }
 
 public struct PagingContent {
     public let items: [AnyHashable]

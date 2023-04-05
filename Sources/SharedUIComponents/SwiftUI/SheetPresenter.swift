@@ -8,11 +8,9 @@
 import SwiftUI
 import Foundation
 
-public class SheetPresenter: ObservableObject {
+public final class SheetPresenter: ObservableObject {
     
     struct Sheet: Identifiable, Equatable {
-        typealias ID = UUID
-        
         let id = UUID()
         let view: AnyView
         

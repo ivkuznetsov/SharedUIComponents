@@ -7,7 +7,7 @@
 
 import Foundation
 
-@objc public class DelegateForwarder: NSObject {
+@objc public final class DelegateForwarder: NSObject {
     
     private struct WeakHolder {
         weak var object: AnyObject?

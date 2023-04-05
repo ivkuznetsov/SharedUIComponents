@@ -15,7 +15,7 @@ public protocol ContainedView {
     #endif
 }
 
-public class ContainerTableCell: BaseTableViewCell, ContainerCell {
+public final class ContainerTableCell: BaseTableViewCell, ContainerCell {
     
     fileprivate var attachedView: PlatformView? {
         #if os(iOS)

@@ -5,7 +5,7 @@
 #if os(macOS)
 import AppKit
 
-public class FirstResponderPreserver {
+public final class FirstResponderPreserver {
     
     private weak var textField: NSTextField?
     private var selection: NSRange?

@@ -9,7 +9,7 @@ import AppKit
 #endif
 import Combine
 
-public class FooterLoadingView: PlatformView, ContainedView {
+public final class FooterLoadingView: PlatformView, ContainedView {
 
     #if os(iOS)
     public let indicatorView = UIActivityIndicatorView(style: .medium)
@@ -20,14 +20,14 @@ public class FooterLoadingView: PlatformView, ContainedView {
         return button
     }()
     
-    open override func didMoveToSuperview() {
+    public override func didMoveToSuperview() {
         super.didMoveToSuperview()
         if state?.value == .loading {
             indicatorView.startAnimating()
         }
     }
     
-    open override func didMoveToWindow() {
+    public override func didMoveToWindow() {
         super.didMoveToWindow()
         if state?.value == .loading {
             indicatorView.startAnimating()

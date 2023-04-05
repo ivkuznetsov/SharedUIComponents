@@ -7,28 +7,6 @@
 
 import SwiftUI
 
-@propertyWrapper
-public class NonPublish<T>: ObservableObject {
-    
-    private var value: T
-    
-    public init(wrappedValue value: @escaping @autoclosure ()->T) {
-        self.value = value()
-    }
-
-    public var wrappedValue: T {
-        get { value }
-        set { value = newValue }
-    }
-}
-
-public extension Animation {
-    
-    static var shortEaseOut: Animation {
-        .spring(response: 0.3)
-    }
-}
-
 struct SlidePositionModifier: ViewModifier {
     let presented: Bool
     

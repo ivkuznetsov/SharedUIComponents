@@ -21,12 +21,12 @@ public protocol LoadingViewProtocol: View {
 public struct LoadingContainer<Content: View>: View {
     
     @EnvironmentObject private var alerts: AlertPresenter
-    
     @ObservedObject public var helper: LoadingHelper
     
     private let loadingView: (LoadingHelper.TaskWrapper)-> any LoadingViewProtocol
     private let failedView: (LoadingHelper.Fail)-> any FailedViewProtocol
     private let content: ()->Content
+    @State private var nonblockingFail: LoadingHelper.Fail?
     
     public init(_ helper: LoadingHelper,
                 loadingView: @escaping (LoadingHelper.TaskWrapper) -> any LoadingViewProtocol = { LoadingView(task: $0) },
@@ -37,8 +37,6 @@ public struct LoadingContainer<Content: View>: View {
         self.failedView = failedView
         self.content = content
     }
-    
-    @State private var nonblockingFail: LoadingHelper.Fail?
     
     private var loading: some View {
         let loading = helper.processing.values.first { $0.presentation == .opaque } ??
